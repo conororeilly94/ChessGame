@@ -1,8 +1,14 @@
 import java.awt.*;
 import java.awt.event.*;
-import java.util.Stack;
 import java.util.*;
+import java.util.Stack;
 import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.border.Border;
+import javax.swing.ImageIcon;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JFrame;
 
 /*
 	This class can be used as a starting point for creating your Chess game project. The only piece that 
@@ -24,12 +30,24 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     JLabel pieces;
     Boolean whiteMove;
     Boolean possible;
+    String winner;
+
+    AIAgent agent;
+    Boolean agentWinner;
+    Stack temporary;
+
+    private enum GameMode { RANDOM, NEXT_BEST_MOVE, TWO_LEVELS_DEEP }
+    private static GameMode gameMode;
+
+    public static void main(String[] args) {
+        ChessProject myChess = new ChessProject();
+        myChess.startGame();
+    }
 
     /*
-        -------------------------------------
-        GUI for the chess game
-        -------------------------------------
-    */
+     * ------------------------------------- GUI for the chess game
+     * -------------------------------------
+     */
     public ChessProject() {
         Dimension boardSize = new Dimension(600, 600);
 
@@ -54,9 +72,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
             int row = (i / 8) % 2;
             if (row == 0)
-                square.setBackground(i % 2 == 0 ? Color.yellow : Color.gray);
+                square.setBackground(i % 2 == 0 ? Color.white : Color.gray);
             else
-                square.setBackground(i % 2 == 0 ? Color.gray : Color.yellow);
+                square.setBackground(i % 2 == 0 ? Color.gray : Color.white);
         }
 
         // Setting up the Initial Chess board and the chess pieces
@@ -118,20 +136,28 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         pieces = new JLabel(new ImageIcon("BlackRook.png"));
         panels = (JPanel) chessBoard.getComponent(63);
         panels.add(pieces);
+
         possible = false;
         whiteMove = true;
+        agent = new AIAgent();
+        agentWinner = false;
+        temporary = new Stack();
     }
 
     /*
-        -------------------------------------
-                    SQUARE CLASS
-        Represents a square on the chessboard
-        -------------------------------------
-    */
+     * ------------------------------------- 
+     *              SQUARE CLASS 
+     * Represents a square on the chessboard 
+     * -------------------------------------
+     */
     class Square {
         public int xCoor;
         public int yCoor;
         public String pieceName;
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /* Object Class to represent Squares on the board */
+        ////////////////////////////////////////////////////////////////////////////////////////////////
 
         public Square(int x, int y, String name) {
             xCoor = x;
@@ -145,155 +171,1252 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             pieceName = "";
         }
 
+        // Returns x coordinate
         public int getXC() {
             return xCoor;
         }
 
+        // Returns y coordinate
         public int getYC() {
             return yCoor;
         }
 
+        // Returns piece name
         public String getName() {
             return pieceName;
         }
     }
 
     /*
-        --------------------------------------
-                    MOVE CLASS
-        Returns the starting squares and 
-        landing square of pieces. AI Component
-        --------------------------------------
-    */
+     * -------------------------------------- 
+     *              MOVE CLASS 
+     * Returns the starting squares and 
+     * landing square of pieces. AI Component
+     * --------------------------------------
+     */
     class Move {
         Square start;
         Square landing;
 
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /* Move Class, returns starting sqare and the landing square of the pieces */
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // Custom Constructor
         public Move(Square x, Square y) {
             start = x;
             landing = y;
         }
 
+        // Default Constructor
         public Move() {
 
         }
 
+        // Return the starting sqare of the piece
         public Square getStart() {
             return start;
         }
 
+        // Return the landing square of the piece
         public Square getLanding() {
             return landing;
         }
     }
 
-    /*
-        --------------------------------------
-                    AIAGENT CLASS
-        Will provide 3 methods that can return
-        the AIs moves: Random move, best move
-        and 2 levels deep
-        --------------------------------------
-    */
     public class AIAgent {
-        Random rand;
 
-        public AIAgent() {
-            rand = new Random();
-        }
-
-        /*
-         * The method randomMove takes as input a stack of potential moves that the AI
-         * agent can make. The agent uses a rondom number generator to randomly select a
-         * move from the inputted Stack and returns this to the calling agent.
-         */
-
-        public Move randomMove(Stack possibilities) {
-
-            int moveID = rand.nextInt(possibilities.size());
-            System.out.println("Agent randomly selected move : " + moveID);
-            for (int i = 1; i < (possibilities.size() - (moveID)); i++) {
-                possibilities.pop();
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /*The AIAgent Class provides 3 methods that return moves which our AI uses to play with the user*/
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        
+            Random rand;
+        
+            public AIAgent() {
+                rand = new Random();
             }
-            Move selectedMove = (Move) possibilities.pop();
-            return selectedMove;
-        }
+        
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /* Random Move */
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+            public Move randomMove(Stack<Move> possibilities) {
+        
+                int moveID = rand.nextInt(possibilities.size());
+                System.out.println("Agent randomly selected move : " + moveID);
+                for (int i = 1; i < (possibilities.size() - (moveID)); i++) {
+                    possibilities.pop();
+                }
 
-        public Move nextBestMove(Stack possibilities) {
-            Move selectedMove = new Move();
-            return selectedMove;
+                // return possibilities.pop();
+                Move selectedMove = (Move)possibilities.pop();
+                return selectedMove;
+            }
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        /* Best Move 
+            Does not care what happens after the movement. Could take pawn but immediately lose a high
+            ranking piece as a result        
+        */        
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+        
+            public Move nextBestMove(Stack whitePossibilitiesStack, Stack blackPossibilitiesStack) {
+                Stack backupMove = (Stack) whitePossibilitiesStack.clone();
+                Stack blackStackM = (Stack) blackPossibilitiesStack.clone();
+                Move bestMove = null;
+                Move whiteMove;
+                Move presentMove;
+                Square blackPosition;
+                int strength = 0;
+                int chosenPieceStrength = 0;
+        
+                while (!whitePossibilitiesStack.empty()) {
+                    whiteMove = (Move) whitePossibilitiesStack.pop();
+                    presentMove = whiteMove;
+        
+                    //check if the centre of the board is occupied or not
+                    if ((presentMove.getStart().getYC() < presentMove.getLanding().getYC())
+                    && (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 3)
+                    || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 3)
+                    || (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 4)
+                    || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 4)) {
+        
+                      strength = 1;
+        
+                        //updating the best move
+                        if (strength > chosenPieceStrength) {
+                            chosenPieceStrength = strength;
+                            bestMove = presentMove;
+                        }
+                    }
+        
+                    //compare white landing positions to black positions, return capture if available or random if not.
+                    while (!blackStackM.isEmpty()) {
+                        strength = 0;
+                        blackPosition = (Square) blackStackM.pop();
+                        if ((presentMove.getLanding().getXC() == blackPosition.getXC()) && (presentMove.getLanding().getYC() == blackPosition.getYC())) {
+        
+                            //Assign strength to pieces
+                            if (blackPosition.getName().equals("BlackQueen")) {
+                                strength = 9;
+                            } else if (blackPosition.getName().equals("BlackRook")) {
+                                strength = 5;
+                            } else if (blackPosition.getName().equals("BlackBishop") || blackPosition.getName().equals("BlackKnight")) {
+                                strength = 3;
+                            } else if (blackPosition.getName().equals("BlackPawn")) {
+                                strength = 1;
+                            } else {
+                                strength = 10;
+                            }
+                        }
+                        //updating the best move
+                        if (strength > chosenPieceStrength) {
+                            chosenPieceStrength = strength;
+                            bestMove = presentMove;
+                        }
+                    }
+                    //reloading the black squares
+                    blackStackM = (Stack) blackPossibilitiesStack.clone();
+                }
+        
+                // Make the best move if not available make a random move.
+                if (chosenPieceStrength > 0) {
+                    System.out.println("Selected AI Agent - Next best move: " +chosenPieceStrength);
+                    return bestMove;
+                }
+        
+                return randomMove(backupMove);
+        
+            }
+        
+        
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        /* Two Level Deep 
+        Looks ahead and tries to determine what the player is going to do
+        */
+        ///////////////////////////////////////////////////////////////////////////////////////////////
+            public Move twoLevelsDeep(Stack whitePossibilitiesStack, Stack blackPossibilitiesStack) {
+                Stack backupMove = (Stack) whitePossibilitiesStack.clone();
+                Stack blackStackM = (Stack) blackPossibilitiesStack.clone();
+                Move bestMove = null;
+                Move whiteMove;
+                Move presentMove;
+                Square blackPosition;
+                int strength = 0;
+                int chosenPieceStrength = 0;
+        
+                while (!whitePossibilitiesStack.empty()) {
+                    whiteMove = (Move) whitePossibilitiesStack.pop();
+                    presentMove = whiteMove;
+        
+                    //assign 1 strength to centre position on board
+                    if ((presentMove.getStart().getYC() < presentMove.getLanding().getYC())
+                            && (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 3)
+                            || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 3)
+                            || (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 4)
+                            || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 4)) {
+                        strength = 0;
+                        //assign best move
+                        if (strength > chosenPieceStrength) {
+                            chosenPieceStrength = strength;
+                            bestMove = presentMove;
+                        }
+                    }
+        
+                    //return a attacking best move when piece has higher strength than centre position
+                    while (!blackStackM.isEmpty()) {
+                        strength = 0;
+                        blackPosition = (Square) blackStackM.pop();
+                        if ((presentMove.getLanding().getXC() == blackPosition.getXC()) && (presentMove.getLanding().getYC() == blackPosition.getYC())) {
+        
+                          //Assign strength to pieces
+                          if (blackPosition.getName().equals("BlackQueen")) {
+                              strength = 9;
+                          } else if (blackPosition.getName().equals("BlackRook")) {
+                              strength = 5;
+                          } else if (blackPosition.getName().equals("BlackBishop") || blackPosition.getName().equals("BlackKnight")) {
+                              strength = 3;
+                          } else if (blackPosition.getName().equals("BlackPawn")) {
+                              strength = 1;
+                          } else {
+                              strength = 10;
+                          }
+                        }
+        
+                        //updating the bestmove
+                        if (strength > chosenPieceStrength) {
+                            chosenPieceStrength = strength;
+                            bestMove = presentMove;
+                        }
+                    }
+        
+                    //reloading the black squares
+                    blackStackM = (Stack) blackPossibilitiesStack.clone();
+                }
+        
+                //Make the best move if not available make a random move.
+                if (chosenPieceStrength > 0) {
+                    System.out.println("Selected AI Agent - Two Level Deep: " +chosenPieceStrength);
+                    return bestMove;
+                }
+                return randomMove(backupMove);
+            }
         }
-
-        public Move twoLevelsDeep(Stack possibilities) {
-            Move selectedMove = new Move();
-            return selectedMove;
-        }
-    }
 
     /*
-     * This method checks if there is a piece present on a particular square.
+     * -----------------------------------------------------------------------------
+     *                          CHECKSURROUNDINGSQUARES 
+     * -----------------------------------------------------------------------------
+     * Method to check if there is a BlackKing in
+     * the surrounding squares of a given Square. The method should return true if
+     * there is no King in any of the squares surrounding the square that was
+     * submitted to the method. 
      */
-    private Boolean piecePresent(int x, int y) {
-        Component c = chessBoard.findComponentAt(x, y);
-        if (c instanceof JPanel) {
-            return false;
-        } else {
-            return true;
+    private Boolean checkSurroundingSquares(Square s) {
+        Boolean possible = false;
+        int x = s.getXC()*75;
+        int y = s.getYC()*75;
+        if(!((getPieceName((x+75), y).contains("BlackKing"))||(getPieceName((x-75), y).contains("BlackKing"))
+            ||(getPieceName(x,(y+75)).contains("BlackKing"))||(getPieceName((x), (y-75)).contains("BlackKing"))
+            ||(getPieceName((x+75),(y+75)).contains("BlackKing"))||(getPieceName((x-75),(y+75)).contains("BlackKing"))
+            ||(getPieceName((x+75),(y-75)).contains("BlackKing"))||(getPieceName((x-75), (y-75)).contains("BlackKing")))) {
+            possible = true;
+        }
+        return possible;
+    }
+
+
+    /*
+     * ------------------------------------------------- 
+     *                  GETKINGSQUARES 
+     * ------------------------------------------------- 
+     * The getKingSquares method takes as an input any coordinates from a square and
+     * returns a stack of all the possible valid moves that the WhiteKing can move
+     * to. So lets consider how the King can move. The King can essentially move in
+     * any direction as long as there is not another king in an adajacent square to
+     * were the king lands. Additionally, the King can only move one square at a
+     * time. To support this method we will also create a helper method called
+     * checkSurroundingSquares(Square s){, see above that returns a Boolean value to
+     * let us know if a supplied square will be adajacent to another square with a
+     * BlackKing present. Essentially if we consider that the board is a set of
+     * squares with coordinates for each square (x, y), this allows us to identify
+     * the possible squares that we should be investigating, see below;
+     * -----------------------------------------------------------------------------
+     * -------------------------------------------------
+     */
+    private Stack getKingSquares(int x, int y, String piece) {
+        Square startingSquare = new Square(x, y, piece);
+        Stack moves = new Stack();
+        Move validM, validM2, validM3, validM4;
+        int tmpx1 = x+1;
+        int tmpx2 = x-1;
+        int tmpy1 = y+1;
+        int tmpy2 = y-1;
+      
+      /*
+        If we consider the grid above, we can create three different columes to check.
+          - if x increases by one square, using the variable tmpx1 (x+1)
+          - if x decreases by one square, using the variable tmpx2 (x-1)
+          - or if x stays the same.
+      */
+        if(!((tmpx1 > 7))){
+          /*
+            This is the first condition where we will be working with the column where x increases.
+            If we consider x increasing, we need to make sure that we don't fall off the board, so we use
+            a condition here to check that the new value of x (tmpx1) is not greater than 7.
+      
+            From the grid above we can see in this column that there are three possible squares for us to check in
+            this column:
+            - were y decreases, y-1
+            - were y increases, y+1
+            - or were y stays the same
+      
+            The first step is to construct three new Squares for each of these possibilities.
+            As the unchanged y value is already a location on the board we don't need to check the location and can simply
+            make a call to checkSurroundingSquares for this new Square.
+      
+            If checkSurroundingSquares returns a positive value we jump inside the condition below:
+              - firstly we create a new Move, which takes the starting square and the landing square that we have just checked with
+                checkSurroundingSquares.
+              - Next we need to figure out if there is a piece present on the square and if so make sure
+                that the piece is an opponents piece.
+              - Once we make sure that we are either moving to an empty square or we are taking our opponents piece we can push this
+                possible move onto our stack of possible moves called "moves".
+      
+            This process is followed again for the other temporary squares created.
+      
+            After we check for all possoble squares on this column, we repeat the process for the other columns as identified above
+            in the grid.
+          */
+          Square tmp = new Square(tmpx1, y, piece);
+          Square tmp1 = new Square(tmpx1, tmpy1, piece);
+          Square tmp2 = new Square(tmpx1, tmpy2, piece);
+          if(checkSurroundingSquares(tmp)){
+            validM = new Move(startingSquare, tmp);
+            if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+              moves.push(validM);
+            }
+            else{
+              if(checkWhiteOponent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+                moves.push(validM);
+              }
+            }
+          }
+          if(!(tmpy1 > 7)){
+            if(checkSurroundingSquares(tmp1)){
+              validM2 = new Move(startingSquare, tmp1);
+              if(!piecePresent(((tmp1.getXC()*75)+20), (((tmp1.getYC()*75)+20)))){
+                moves.push(validM2);
+              }
+              else{
+                if(checkWhiteOponent(((tmp1.getXC()*75)+20), (((tmp1.getYC()*75)+20)))){
+                  moves.push(validM2);
+                }
+              }
+            }
+          }
+          if(!(tmpy2 < 0)){
+            if(checkSurroundingSquares(tmp2)){
+              validM3 = new Move(startingSquare, tmp2);
+              if(!piecePresent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
+                moves.push(validM3);
+              }
+              else{
+                System.out.println("The values that we are going to be looking at are : "+((tmp2.getXC()*75)+20)+" and the y value is : "+((tmp2.getYC()*75)+20));
+                if(checkWhiteOponent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
+                  moves.push(validM3);
+                }
+              }
+            }
+          }
+        }
+        if(!((tmpx2 < 0))){
+          Square tmp3 = new Square(tmpx2, y, piece);
+          Square tmp4 = new Square(tmpx2, tmpy1, piece);
+          Square tmp5 = new Square(tmpx2, tmpy2, piece);
+          if(checkSurroundingSquares(tmp3)){
+            validM = new Move(startingSquare, tmp3);
+            if(!piecePresent(((tmp3.getXC()*75)+20), (((tmp3.getYC()*75)+20)))){
+              moves.push(validM);
+            }
+            else{
+              if(checkWhiteOponent(((tmp3.getXC()*75)+20), (((tmp3.getYC()*75)+20)))){
+                moves.push(validM);
+              }
+            }
+          }
+          if(!(tmpy1 > 7)){
+            if(checkSurroundingSquares(tmp4)){
+              validM2 = new Move(startingSquare, tmp4);
+              if(!piecePresent(((tmp4.getXC()*75)+20), (((tmp4.getYC()*75)+20)))){
+                moves.push(validM2);
+              }
+              else{
+                if(checkWhiteOponent(((tmp4.getXC()*75)+20), (((tmp4.getYC()*75)+20)))){
+                  moves.push(validM2);
+                }
+              }
+            }
+          }
+          if(!(tmpy2 < 0)){
+            if(checkSurroundingSquares(tmp5)){
+              validM3 = new Move(startingSquare, tmp5);
+              if(!piecePresent(((tmp5.getXC()*75)+20), (((tmp5.getYC()*75)+20)))){
+                moves.push(validM3);
+              }
+              else{
+                if(checkWhiteOponent(((tmp5.getXC()*75)+20), (((tmp5.getYC()*75)+20)))){
+                  moves.push(validM3);
+                }
+              }
+            }
+          }
+        }
+        Square tmp7 = new Square(x, tmpy1, piece);
+        Square tmp8 = new Square(x, tmpy2, piece);
+        if(!(tmpy1 > 7)){
+          if(checkSurroundingSquares(tmp7)){
+            validM2 = new Move(startingSquare, tmp7);
+            if(!piecePresent(((tmp7.getXC()*75)+20), (((tmp7.getYC()*75)+20)))){
+              moves.push(validM2);
+            }
+            else{
+              if(checkWhiteOponent(((tmp7.getXC()*75)+20), (((tmp7.getYC()*75)+20)))){
+                moves.push(validM2);
+              }
+            }
+          }
+        }
+        if(!(tmpy2 < 0)){
+          if(checkSurroundingSquares(tmp8)){
+            validM3 = new Move(startingSquare, tmp8);
+            if(!piecePresent(((tmp8.getXC()*75)+20), (((tmp8.getYC()*75)+20)))){
+              moves.push(validM3);
+            }
+            else{
+              if(checkWhiteOponent(((tmp8.getXC()*75)+20), (((tmp8.getYC()*75)+20)))){
+                moves.push(validM3);
+              }
+            }
+          }
+        }
+        return moves;
+    }
+    // end of the method getKingSquares()
+
+    /*
+     * ------------------------------------------------------------- 
+     *                  GETQUEENMOVES
+     * Method to return all the possible moves that a Queen can make 
+     * Combination of Rook and Bishop moves
+     * -------------------------------------------------------------
+     */
+    private Stack getQueenMoves(int x, int y, String piece) {
+        Stack completeMoves = new Stack();
+        Stack tmpMoves = new Stack();
+        Move tmp;
+        /*
+            The Queen is a pretty easy piece to figure out if you have completed the
+            Bishop and the Rook movements. Either the Queen is going to move like a
+            Bishop or its going to move like a Rook, so all we have to do is make a call to both of these
+            methods.
+        */
+        tmpMoves = getRookMoves(x, y, piece);
+        while(!tmpMoves.empty()){
+            tmp = (Move)tmpMoves.pop();
+            completeMoves.push(tmp);
+        }
+        tmpMoves = getBishopMoves(x, y, piece);
+        while(!tmpMoves.empty()){
+            tmp = (Move)tmpMoves.pop();
+            completeMoves.push(tmp);
+        }
+        return completeMoves;
+    }
+
+    /*
+     * -----------------------------------------------------------------------------
+     *                           GETROOKMOVES 
+     * -----------------------------------------------------------------------------
+     */
+    private Stack getRookMoves(int x, int y, String piece) {
+        Square startingSquare = new Square(x, y, piece);
+        Stack moves = new Stack();
+        Move validM, validM2, validM3, validM4;
+        /*
+            There are four possible directions that the Rook can move to:
+            - the x value is increasing
+            - the x value is decreasing
+            - the y value is increasing
+            - the y value is decreasing
+
+            Each of these movements should be catered for. The loop guard is set to incriment up to the maximun number of squares.
+            On each iteration of the first loop we are adding the value of i to the current x coordinate.
+            We make sure that the new potential square is going to be on the board and if it is we create a new square and a new potential
+            move (originating square, new square).If there are no pieces present on the potential square we simply add it to the Stack
+            of potential moves.
+            If there is a piece on the square we need to check if its an opponent piece. If it is an opponent piece its a valid move, but we
+            must break out of the loop using the Java break keyword as we can't jump over the piece and search for squares. If its not
+            an opponent piece we simply break out of the loop.
+
+            This cycle needs to happen four times for each of the possible directions of the Rook.
+        */
+        for(int i=1;i < 8;i++){
+            int tmpx = x+i;
+            int tmpy = y;
+            if(!(tmpx > 7 || tmpx < 0)){
+            Square tmp = new Square(tmpx, tmpy, piece);
+            validM = new Move(startingSquare, tmp);
+            if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+                moves.push(validM);
+            }
+            else{
+                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                moves.push(validM);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        }//end of the loop with x increasing and Y doing nothing...
+        for(int j=1;j < 8;j++){
+            int tmpx1 = x-j;
+            int tmpy1 = y;
+            if(!(tmpx1 > 7 || tmpx1 < 0)){
+            Square tmp2 = new Square(tmpx1, tmpy1, piece);
+            validM2 = new Move(startingSquare, tmp2);
+            if(!piecePresent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
+                moves.push(validM2);
+            }
+            else{
+                if(checkWhiteOponent(((tmp2.getXC()*75)+20), ((tmp2.getYC()*75)+20))){
+                moves.push(validM2);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        }//end of the loop with x increasing and Y doing nothing...
+        for(int k=1;k < 8;k++){
+            int tmpx3 = x;
+            int tmpy3 = y+k;
+            if(!(tmpy3 > 7 || tmpy3 < 0)){
+            Square tmp3 = new Square(tmpx3, tmpy3, piece);
+            validM3 = new Move(startingSquare, tmp3);
+            if(!piecePresent(((tmp3.getXC()*75)+20), (((tmp3.getYC()*75)+20)))){
+                moves.push(validM3);
+            }
+            else{
+                if(checkWhiteOponent(((tmp3.getXC()*75)+20), ((tmp3.getYC()*75)+20))){
+                moves.push(validM3);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        }//end of the loop with x increasing and Y doing nothing...
+        for(int l=1;l < 8;l++){
+            int tmpx4 = x;
+            int tmpy4 = y-l;
+            if(!(tmpy4 > 7 || tmpy4 < 0)){
+            Square tmp4 = new Square(tmpx4, tmpy4, piece);
+            validM4 = new Move(startingSquare, tmp4);
+            if(!piecePresent(((tmp4.getXC()*75)+20), (((tmp4.getYC()*75)+20)))){
+                moves.push(validM4);
+            }
+            else{
+                if(checkWhiteOponent(((tmp4.getXC()*75)+20), ((tmp4.getYC()*75)+20))){
+                moves.push(validM4);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        }//end of the loop with x increasing and Y doing nothing...
+        return moves;
+    }// end of get Rook Moves.
+
+    /*
+     * -----------------------------------------------------------------------------
+     *                                  GETBISHOPMOVES 
+     * ----------------------------------------------------------------------------- 
+     */
+    private Stack getBishopMoves(int x, int y, String piece) {
+        Square startingSquare = new Square(x, y, piece);
+        Stack moves = new Stack();
+        Move validM, validM2, validM3, validM4;
+        /*
+            The Bishop can move along any diagonal until it hits an enemy piece or its own piece
+            it cannot jump over its own piece. We need to use four different loops to go through the possible movements
+            to identify possible squares to move to. The temporary squares, i.e. the values of x and y must change by the
+            same amount on each iteration of each of the loops.
+
+            If the new values of x and y are on the board, we create a new square and a new move (from the original square to the new
+            square). We then check if there is a piece present on the new square:
+            - if not we add the move as a possible new move
+            - if there is a piece we make sure that we can capture our opponents piece and we cannot take our own piece
+            and then we break out of the loop
+
+            This process is repeated for each of the other three possible diagonals that the Bishop can travel along.
+
+        */
+        for(int i=1;i < 8;i++){
+            int tmpx = x+i;
+            int tmpy = y+i;
+            if(!(tmpx > 7 || tmpx < 0 || tmpy > 7 || tmpy < 0)){
+            Square tmp = new Square(tmpx, tmpy, piece);
+            validM = new Move(startingSquare, tmp);
+            if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+                moves.push(validM);
+            }
+            else{
+                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                moves.push(validM);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        } // end of the first for Loop
+        for(int k=1;k < 8;k++){
+            int tmpk = x+k;
+            int tmpy2 = y-k;
+            if(!(tmpk > 7 || tmpk < 0 || tmpy2 > 7 || tmpy2 < 0)){
+            Square tmpK1 = new Square(tmpk, tmpy2, piece);
+            validM2 = new Move(startingSquare, tmpK1);
+            if(!piecePresent(((tmpK1.getXC()*75)+20), (((tmpK1.getYC()*75)+20)))){
+                moves.push(validM2);
+            }
+            else{
+                if(checkWhiteOponent(((tmpK1.getXC()*75)+20), ((tmpK1.getYC()*75)+20))){
+                moves.push(validM2);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        } //end of second loop.
+        for(int l=1;l < 8;l++){
+            int tmpL2 = x-l;
+            int tmpy3 = y+l;
+            if(!(tmpL2 > 7 || tmpL2 < 0 || tmpy3 > 7 || tmpy3 < 0)){
+            Square tmpLMov2 = new Square(tmpL2, tmpy3, piece);
+            validM3 = new Move(startingSquare, tmpLMov2);
+            if(!piecePresent(((tmpLMov2.getXC()*75)+20), (((tmpLMov2.getYC()*75)+20)))){
+                moves.push(validM3);
+            }
+            else{
+                if(checkWhiteOponent(((tmpLMov2.getXC()*75)+20), ((tmpLMov2.getYC()*75)+20))){
+                moves.push(validM3);
+                break;
+                }
+                else{
+                break;
+                }
+            }
+            }
+        }// end of the third loop
+        for(int n=1;n < 8;n++){
+            int tmpN2 = x-n;
+            int tmpy4 = y-n;
+            if(!(tmpN2 > 7 || tmpN2 < 0 || tmpy4 > 7 || tmpy4 < 0)){
+                Square tmpNmov2 = new Square(tmpN2, tmpy4, piece);
+                validM4 = new Move(startingSquare, tmpNmov2);
+                if(!piecePresent(((tmpNmov2.getXC()*75)+20), (((tmpNmov2.getYC()*75)+20)))){
+                    moves.push(validM4);
+            }
+            else{
+                if(checkWhiteOponent(((tmpNmov2.getXC()*75)+20), ((tmpNmov2.getYC()*75)+20))){
+                    moves.push(validM4);
+                    break;
+                }
+                else{
+                    break;
+                }
+            }
+            }
+        }// end of the last loop
+        return moves;
+    }
+
+    /*
+     * -----------------------------------------------------------------------------
+     *                          GETKNIGHTMOVES 
+     * -----------------------------------------------------------------------------
+     * Method fo return all the squares that a Knight can attack. The knight is possibly the simplest piece
+     * to get possible movements from. The Knight can essentially move in an L
+     * direction from any square on the board as long as the landing square is on
+     * the board and we can take an opponents piece but not our own piece.
+     * -----------------------------------------------------------------------------
+     * --------------------------------
+     */
+    private Stack getKnightMoves(int x, int y, String piece) {
+        Square startingSquare = new Square(x, y, piece);
+        Stack moves = new Stack();
+        Stack attackingMove = new Stack();
+        Square s = new Square(x+1, y+2, piece);
+        moves.push(s);
+        Square s1 = new Square(x+1, y-2, piece);
+        moves.push(s1);
+        Square s2 = new Square(x-1, y+2, piece);
+        moves.push(s2);
+        Square s3 = new Square(x-1, y-2, piece);
+        moves.push(s3);
+        Square s4 = new Square(x+2, y+1, piece);
+        moves.push(s4);
+        Square s5 = new Square(x+2, y-1, piece);
+        moves.push(s5);
+        Square s6 = new Square(x-2, y+1, piece);
+        moves.push(s6);
+        Square s7 = new Square(x-2, y-1, piece);
+        moves.push(s7);
+
+        for(int i=0;i < 8;i++){
+            Square tmp = (Square)moves.pop();
+            Move tmpmove = new Move(startingSquare, tmp);
+            if((tmp.getXC() < 0)||(tmp.getXC() > 7)||(tmp.getYC() < 0)||(tmp.getYC() > 7)){
+
+            }
+            else if(piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+            if(piece.contains("White")){
+                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                attackingMove.push(tmpmove);
+                }
+            }
+            }
+            else{
+            attackingMove.push(tmpmove);
+            }
+        }
+        return attackingMove;
+    }
+
+    /*
+     * ----------------------------------- 
+     *             COLORSQUARES 
+     * Method to colour a stack of Squares 
+     * -----------------------------------
+     */
+    private void colorSquares(Stack squares) {
+        Border greenBorder = BorderFactory.createLineBorder(Color.GREEN, 3);
+        while(!squares.empty()){
+            Square s = (Square)squares.pop();
+            int location = s.getXC() + ((s.getYC())*8);
+            JPanel panel = (JPanel)chessBoard.getComponent(location);
+            panel.setBorder(greenBorder);
         }
     }
 
     /*
-     * This is a method to check if a piece is a Black piece.
+     * ------------------------------------------------------- 
+     *              GETLANDINGSQUARES
+     * Method to get the landing square of a bunch of moves...
+     * -------------------------------------------------------
+     */
+    private void getLandingSquares(Stack found) {
+        Move tmp;
+        Square landing;
+        Stack squares = new Stack();
+        while(!found.empty()){
+            tmp = (Move)found.pop();
+            landing = (Square)tmp.getLanding();
+            squares.push(landing);
+        }
+        colorSquares(squares);
+    }
+
+    /*
+     * ----------------------------------- 
+     *          FINDWHITEPIECES 
+     * Method to find all the White Pieces. 
+     * -----------------------------------
+     */
+    private Stack findWhitePieces() {
+        Stack squares = new Stack();
+        String icon;
+        int x;
+        int y;
+        String pieceName;
+        for(int i=0;i < 600;i+=75){
+            for(int j=0;j < 600;j+=75){
+                y = i/75;
+                x=j/75;
+                Component tmp = chessBoard.findComponentAt(j, i);
+                if(tmp instanceof JLabel){
+                    chessPiece = (JLabel)tmp;
+                    icon = chessPiece.getIcon().toString();
+                    pieceName = icon.substring(0, (icon.length()-4));
+                    if(pieceName.contains("White")){
+                        Square stmp = new Square(x, y, pieceName);
+                        squares.push(stmp);
+                    }
+                }
+            }
+        }
+        return squares;
+    }
+
+    /*
+     * ----------------------------------- 
+     *          FINDBLACKPIECES 
+     * Method to find all the Black Pieces. 
+     * -----------------------------------
+     */
+    private Stack findBlackPieces() {
+        Stack squares = new Stack();
+        String icon;
+        int x;
+        int y;
+        String pieceName;
+        for (int i = 0; i < 600; i += 75) {
+            for (int j = 0; j < 600; j += 75) {
+                y = i / 75;
+                x = j / 75;
+                Component tmp = chessBoard.findComponentAt(j, i);
+                if (tmp instanceof JLabel) {
+                    chessPiece = (JLabel) tmp;
+                    icon = chessPiece.getIcon().toString();
+                    pieceName = icon.substring(0, (icon.length() - 4));
+                    if (pieceName.contains("Black")) {
+                        Square stmp = new Square(x, y, pieceName);
+                        squares.push(stmp);
+                    }
+                }
+            }
+        }
+        return squares;
+    }
+
+    /*
+     * ---------------------------------------------------------------------------
+     *                              PIECEPRESENT 
+     * This method checks if there is a piece occupied on the particular square
+     * ---------------------------------------------------------------------------
+     */
+    // private Boolean piecePresent(int x, int y) {
+    //     Component c = chessBoard.findComponentAt(x, y);
+    //     // If there is a piece at the square
+    //     if (c instanceof JPanel) {
+    //         return false;
+    //     } else {
+    //         return true;
+    //     }
+    // }
+
+    public Boolean piecePresent(int x, int y) {
+        Component c = chessBoard.findComponentAt(x, y);
+        return !(c instanceof JPanel);
+    }
+
+    /**
+     This method checks if there is a piece present on a particular square.
+     */
+    public Boolean piecePresent(Square square) {
+        Component c = chessBoard.findComponentAt((square.getXC() * 75) + 20, (square.getYC() * 75) + 20);
+        return !(c instanceof JPanel);
+    }
+
+    Stack<Move> getWhitePawnMoves(int x, int y, String piece) {
+        Square startingSquare = new Square(x ,y ,piece);
+        Square downOneSquare = new Square(x, y + 1, piece);
+        Square downTwoSquare = new Square(x, y + 2, piece);
+        Square leftDiagonalSquare = new Square(x - 1, y + 1, piece);
+        Square rightDiagonalSquare = new Square(x + 1, y + 1, piece);
+
+        Stack<Move> moves = new Stack<>();
+        boolean isStartingPosition = (startingSquare.getYC() == 1);
+
+        // Check squares below
+        if(!piecePresent(downOneSquare)) {
+            moves.push(new Move(startingSquare, downOneSquare));
+
+            if(isStartingPosition && !piecePresent(downTwoSquare)) {
+                moves.push(new Move(startingSquare, downTwoSquare));
+            }
+        }
+
+        // Check left diagonal square for opponent
+        if(leftDiagonalSquare.getXC() >= 0 && piecePresent(leftDiagonalSquare) && checkWhiteOponent(((leftDiagonalSquare.getXC() * 75) + 20), ((leftDiagonalSquare.getYC() * 75) + 20))) {
+            moves.push(new Move(startingSquare, leftDiagonalSquare));
+        }
+
+        // Check right diagonal square for opponent
+        if(rightDiagonalSquare.getXC() <= 7 && piecePresent(rightDiagonalSquare) && checkWhiteOponent(((rightDiagonalSquare.getXC() * 75) + 20), ((rightDiagonalSquare.getYC() * 75) + 20))) {
+            moves.push(new Move(startingSquare, rightDiagonalSquare));
+        }
+
+        return moves;
+    }
+
+    /*
+     * ----------------------------------- 
+     *          RESETBORDERS
+     * -----------------------------------
+     */
+    private void resetBorders() {
+        Border empty = BorderFactory.createEmptyBorder();
+        for(int i=0;i < 64;i++){
+            JPanel tmppanel = (JPanel)chessBoard.getComponent(i);
+            tmppanel.setBorder(empty);
+        }
+    }
+
+    /*
+     * --------------------------------------------------------------------------------- 
+     *                                  PRINTSTACK 
+     * The method printStack takes in a Stack of Moves and prints out all possible moves.
+     * ---------------------------------------------------------------------------------
+     * 
+     */
+    // private void printStack(Stack input) {
+    //     Move m;
+    //     Square s, l;
+    //     while(!input.empty()){
+    //         m = (Move)input.pop();
+    //         s = (Square)m.getStart();
+    //         l = (Square)m.getLanding();
+    //         System.out.println("The possible move that was found is : ("+s.getXC()+" , "+s.getYC()+"), landing at ("+l.getXC()+" , "+l.getYC()+")");
+    //     }
+    // }
+
+    /*
+     * --------------------------------------------------- 
+     *              MAKEAIMOVE
+     * ---------------------------------------------------
+     */
+    private void makeAIMove() {
+        resetBorders();
+        layeredPane.validate();
+        layeredPane.repaint();
+        Stack white = findWhitePieces();
+        Stack black = findBlackPieces();
+        Stack completeMoves = new Stack();
+        Move tmp;
+        while(!white.empty()){
+            Square s = (Square)white.pop();
+            String tmpString = s.getName();
+            Stack tmpMoves = new Stack();
+            Stack temporary = new Stack();
+            /*
+                We need to identify all the possible moves that can be made by the AI Opponent
+            */
+            if(tmpString.contains("Knight")){
+                tmpMoves = getKnightMoves(s.getXC(), s.getYC(), s.getName());
+            }
+            else if(tmpString.contains("Bishop")){
+                tmpMoves = getBishopMoves(s.getXC(), s.getYC(), s.getName());
+            }
+            else if(tmpString.contains("Pawn")){
+                tmpMoves = getWhitePawnMoves(s.getXC(), s.getYC(), s.getName());
+            }
+            else if(tmpString.contains("Rook")){
+              tmpMoves = getRookMoves(s.getXC(), s.getYC(), s.getName());
+            }
+            else if(tmpString.contains("Queen")){
+              tmpMoves = getQueenMoves(s.getXC(), s.getYC(), s.getName());
+            }
+            else if(tmpString.contains("King")){
+                tmpMoves = getKingSquares(s.getXC(), s.getYC(), s.getName());
+            }
+
+            while(!tmpMoves.empty()){
+            tmp = (Move)tmpMoves.pop();
+            completeMoves.push(tmp);
+            }
+        }
+        temporary = (Stack)completeMoves.clone();
+        getLandingSquares(temporary);
+        // printStack(temporary);
+        /*
+        So now we should have a copy of all the possible moves to make in our Stack called completeMoves
+        */
+        if(completeMoves.size() == 0){
+        /*
+            In Chess if you cannot make a valid move but you are not in Check this state is referred to
+            as a Stale Mate
+        */
+        JOptionPane.showMessageDialog(null, "Cogratulations, you have placed the AI component in a Stale Mate Position");
+        System.exit(0);
+
+        }
+        else{
+        /*
+            Okay, so we can make a move now. We have a stack of all possible moves and need to call the correct agent to select
+            one of these moves. Lets print out the possible moves to the standard output to view what the options are for
+            White. Later when you are finished the continuous assessment you don't need to have such information being printed
+            out to the standard output.
+        */
+            System.out.println("=============================================================");
+            Stack testing = new Stack();            
+            while(!completeMoves.empty()){
+                Move tmpMove = (Move)completeMoves.pop();
+                Square s1 = (Square)tmpMove.getStart();
+                Square s2 = (Square)tmpMove.getLanding();
+                System.out.println("The "+s1.getName()+" can move from ("+s1.getXC()+", "+s1.getYC()+") to the following square: ("+s2.getXC()+", "+s2.getYC()+")");
+                testing.push(tmpMove);
+            }
+            System.out.println("=============================================================");
+            Border redBorder = BorderFactory.createLineBorder(Color.RED, 3);
+
+            Move selectedMove;
+            switch (gameMode) {
+                case RANDOM:
+                    selectedMove = agent.randomMove(testing);
+                    break;
+                case NEXT_BEST_MOVE:
+                    selectedMove = agent.nextBestMove(testing, black);
+                    break;
+                case TWO_LEVELS_DEEP:
+                    selectedMove = agent.twoLevelsDeep(testing, black);
+                    break;
+                default:
+                    selectedMove = agent.randomMove(testing);
+                    break;
+            }
+
+
+            //Move selectedMove = agent.twoLevelsDeep(testing, black);            
+            Square startingPoint = (Square)selectedMove.getStart();
+            Square landingPoint = (Square)selectedMove.getLanding();
+            int startX1 = (startingPoint.getXC()*75)+20;
+            int startY1 = (startingPoint.getYC()*75)+20;
+            int landingX1 = (landingPoint.getXC()*75)+20;
+            int landingY1 = (landingPoint.getYC()*75)+20;
+            System.out.println("Move "+startingPoint.getName()+" ("+startingPoint.getXC()+", "+startingPoint.getYC()+") to ("+landingPoint.getXC()+", "+landingPoint.getYC()+")");
+
+            Component c  = (JLabel)chessBoard.findComponentAt(startX1, startY1);
+            Container parent = c.getParent();
+            parent.remove(c);
+            int panelID = (startingPoint.getYC() * 8)+startingPoint.getXC();
+            panels = (JPanel)chessBoard.getComponent(panelID);
+            panels.setBorder(redBorder);
+            parent.validate();
+
+            Component l = chessBoard.findComponentAt(landingX1, landingY1);
+            if(l instanceof JLabel){
+                Container parentlanding = l.getParent();
+                JLabel awaitingName = (JLabel)l;
+                String agentCaptured = awaitingName.getIcon().toString();
+                if(agentCaptured.contains("King")){
+                agentWinner = true;
+                }
+                parentlanding.remove(l);
+                parentlanding.validate();
+                pieces = new JLabel( new ImageIcon(startingPoint.getName()+".png") );
+                int landingPanelID = (landingPoint.getYC()*8)+landingPoint.getXC();
+                panels = (JPanel)chessBoard.getComponent(landingPanelID);
+                panels.add(pieces);
+                panels.setBorder(redBorder);
+                layeredPane.validate();
+                layeredPane.repaint();
+
+                if(agentWinner){
+                JOptionPane.showMessageDialog(null, "The AI Agent has won!");
+                System.exit(0);
+                }
+                
+                if (startingPoint.getName().contains("Pawn") && landingPoint.getYC() == 7) {
+                    parentlanding.remove(0);
+                    pieces = new JLabel(new ImageIcon("WhiteQueen.png"));
+                    landingPanelID = (landingPoint.getYC() * 8) + landingPoint.getXC();
+                    panels = (JPanel) chessBoard.getComponent(landingPanelID);
+                    panels.add(pieces);
+                }
+            }
+            else{
+                pieces = new JLabel( new ImageIcon(startingPoint.getName()+".png") );
+                int landingPanelID = (landingPoint.getYC()*8)+landingPoint.getXC();
+                panels = (JPanel)chessBoard.getComponent(landingPanelID);
+                panels.add(pieces);
+                panels.setBorder(redBorder);
+                layeredPane.validate();
+                layeredPane.repaint();
+            }
+            whiteMove = false;
+        }
+    }
+
+    
+
+    /*
+     * -------------------------------------------------- 
+     *                 GETWHITEPAWNSQUARES 
+     * Method to check where a white pawn can move to AI 
+     * will always be white piece so dont need to implement in black moves
+     * --------------------------------------------------
+     */
+    private Stack getWhitePawnSquares(int x, int y, String piece) {
+        Stack moves = new Stack();
+        Square startingSquare = new Square(x, y, piece);
+
+        Move validMove1;
+        Move validMove2;
+        Move validMove3;
+        Move validMove4;
+
+        int posx1 = x + 1; // Move one to right
+        int posx2 = x - 1; // Move one to left
+        int posy1 = y + 1; // Move down one
+        int posy2 = y + 2; // Move down two
+
+        Square getSquare1 = new Square(x, posy1, piece); // Pawn moves one square down
+        Square getSquare2 = new Square(posx1, posy1, piece); // Pawn moves down one square to the right
+        Square getSquare3 = new Square(posx2, posy1, piece); // Pawn moves down one square to the left
+        Square getSquare4 = new Square(x, posy2, piece); // Pawn moves two squares down
+
+        if (y == 1) { // If at white pawn starting position
+            validMove2 = new Move(startingSquare, getSquare4); // Pawn moves down 2 squares from starting position
+            if (!piecePresent(((getSquare4.getXC() * 75) + 20), (((getSquare4.getYC() * 75) + 20))) // If there is not a piece present two squares down
+                    && !piecePresent(((getSquare1.getXC() * 75) + 20), (((getSquare1.getYC() * 75) + 20)))) // And no piece one square down
+            {
+                // push() method is used to Pushes an item onto the top of the stack
+                moves.push(startingSquare); // Pushes element into startingSquare stack
+            } else {
+                // Taking black pieces to the right
+                if (!(posx1 > 7)) { // If it is taken a piece that is less than x-axis 7
+                    if (piecePresent(((getSquare2.getXC() * 75) + 20), (((getSquare2.getYC() * 75) + 20)))) // If there is a piece present down one square to the right
+                    {
+                        if (checkWhiteOponent(((getSquare2.getXC() * 75) + 20), (((getSquare2.getYC() * 75) + 20)))) // If it is a black piece
+                        {
+                            moves.push(validMove2); // Pushes element into validMove2 stack, i.e. takes opponents pawn that is down one square to the right
+                        }
+                    }
+                }
+
+                if (!(posx2 < 0)) { // It it is taken a piece that is greater than x-axis 0
+                    if (piecePresent(((getSquare3.getXC() * 75) + 20), (((getSquare3.getYC() * 75) + 20)))) // If there is a piece present down one square to the left
+                    {
+                        if (checkWhiteOponent(((getSquare3.getXC() * 75) + 20), (((getSquare3.getYC() * 75) + 20)))) // If it is a black piece
+                        {
+                            moves.push(validMove2); // Pushes element into validMove2 stack, i.e. takes opponents pawn that is down one square to the right
+                        }
+                    }
+                }
+            }
+        }
+        if (!(posy1 > 7)) { // If it is taken a piece that is less than x-axis 7
+            validMove1 = new Move(startingSquare, getSquare1);
+            if (!piecePresent(((getSquare1.getXC() * 75) + 20), (((getSquare1.getYC() * 75) + 20)))) // If there is not a piece present on square down
+            {
+                moves.push(validMove1); // Pushes element into validMove1 stack, i.e. moves down one square
+            }
+            // Taking black pieces to the left
+            if (!(posx1 > 7)) {
+                validMove3 = new Move(startingSquare, getSquare2);
+                if (piecePresent(((getSquare2.getXC() * 75) + 20), (((getSquare2.getYC() * 75) + 20)))) {
+                    if (checkWhiteOponent(((getSquare2.getXC() * 75) + 20), (((getSquare2.getYC() * 75) + 20)))) {
+                        moves.push(validMove3); // Pushes element into validMove2 stack, i.e. takes opponents pawn that is down one square to the left
+                    }
+                }
+            }
+            if (!(posx2 < 0)) {
+                validMove4 = new Move(startingSquare, getSquare3);
+                if (piecePresent(((getSquare3.getXC() * 75) + 20), (((getSquare3.getYC() * 75) + 20)))) {
+                    if (checkWhiteOponent(((getSquare3.getXC() * 75) + 20), (((getSquare3.getYC() * 75) + 20)))) {
+                        moves.push(validMove4); // Pushes element into validMove2 stack, i.e. takes opponents pawn that is down one square to the left
+                    }
+                }
+            }
+        }
+        return moves;
+    }
+
+    /*
+     * -----------------------------------------------------------------------------
+     *                          CHECKWHITEOPPONENT 
+     * This method checks if a piece is a Black piece that the white piece can take.
+     * ----------------------------------------------------------------------------- 
      */
     private Boolean checkWhiteOponent(int newX, int newY) {
+        // Boolean oponent;
+        // Component c1 = chessBoard.findComponentAt(newX, newY); // Checks if piece present at square
+        // JLabel awaitingPiece = (JLabel) c1; // Changes to a JLabel
+        // String tmp1 = awaitingPiece.getIcon().toString(); // Gets the icon and text associated to that piece
+        // if (((tmp1.contains("Black")))) {
+        //     oponent = true; // If it is black, it is an opponents piece. Another if to check if the piece that was taken was a King
+        //     if (tmp1.contains("King")) { // If the label contains 'King'
+        //         JOptionPane.showMessageDialog(null, "Game Over - White Wins!!"); // King has been taken and the game is over
+        //         System.exit(0); // Exit game
+        //     }
+        // } else {
+        //     oponent = false; // If not an opponent piece
+        // }
+        // return oponent;
         Boolean oponent;
         Component c1 = chessBoard.findComponentAt(newX, newY);
         JLabel awaitingPiece = (JLabel) c1;
         String tmp1 = awaitingPiece.getIcon().toString();
         if (((tmp1.contains("Black")))) {
             oponent = true;
-            if (tmp1.contains("King")) {
-                JOptionPane.showMessageDialog(null, "Game Over - White Wins!!");
-                System.exit(0);
-            }
         } else {
             oponent = false;
         }
         return oponent;
     }
 
+    /*
+     * -----------------------------------------------------------------------------
+     *                               CHECKBLACKOPPONENT 
+     * This method checks if a piece is a white piece that the black piece can take.
+     * -----------------------------------------------------------------------------
+     */
     private Boolean checkBlackOponent(int newX, int newY) {
+        // Boolean oponent;
+        // Component c1 = chessBoard.findComponentAt(newX, newY);
+        // JLabel awaitingPiece = (JLabel) c1;
+        // String tmp1 = awaitingPiece.getIcon().toString();
+        // if (((tmp1.contains("White")))) {
+        //     oponent = true;
+        //     if (tmp1.contains("King")) {
+        //         JOptionPane.showMessageDialog(null, "Game Over - Black Wins!!");
+        //         System.exit(0);
+        //     }
+        // } else {
+        //     oponent = false;
+        // }
+        // return oponent;
         Boolean oponent;
         Component c1 = chessBoard.findComponentAt(newX, newY);
         JLabel awaitingPiece = (JLabel) c1;
         String tmp1 = awaitingPiece.getIcon().toString();
         if (((tmp1.contains("White")))) {
             oponent = true;
-            if (tmp1.contains("King")) {
-                JOptionPane.showMessageDialog(null, "Game Over - Black Wins!!");
-                System.exit(0);
-            }
         } else {
             oponent = false;
         }
         return oponent;
     }
 
-    // The method below ensures only the enemy piece is killed and returns a Boolean
-    // validMove
+    /*
+     * --------------------------------------------------------------------
+     *                              COMPLETEMOVE 
+     * This method checks that a player can only take an opponents piece 
+     * --------------------------------------------------------------------
+     */
     private Boolean completeMove(int newX, int newY, String pieceName) {
         Boolean validMove = false;
         System.out.println(pieceName);
-        if (piecePresent(newX, newY)) {
-            if (pieceName.contains("White")) {
-                if (checkWhiteOponent(newX, newY)) {
-                    validMove = true;
+        if (piecePresent(newX, newY)) { // If there is a piece present on the square the player picks
+            if (pieceName.contains("White")) { // And it is a white piece
+                if (checkWhiteOponent(newX, newY)) { // Call checkWhiteOponent method
+                    validMove = true; // Is a valid move
                     return validMove;
                 } else {
-                    validMove = false;
+                    validMove = false; // Is not a valid move
                     return validMove;
                 }
             } else {
+                // Check for black piece
                 if (checkBlackOponent(newX, newY)) {
                     validMove = true;
                     return validMove;
@@ -308,18 +1431,45 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         }
     }
 
-    private String getPieceName(int newX, int newY) {
-        Component c = chessBoard.findComponentAt(newX, newY);
-        if (c instanceof JLabel) {
-            JLabel awaitingPiece = (JLabel) c;
-            String tmp1 = awaitingPiece.getIcon().toString();
-            return tmp1;
+    /*
+     * ----------------------------------------------- 
+     *                  pieceMove
+     * -----------------------------------------------
+     */
+    private Boolean pieceMove(int x, int y) {
+        if ((startX == x) && (startY == y)) {
+            return false;
         } else {
-            return "";
+            return true;
         }
     }
 
-    private Boolean kingTaken(int newX, int newY) {
+    /*
+     * ----------------------------------------------- GETPIECENAME This method
+     * checks the name of a chess piece
+     * -----------------------------------------------
+     */
+    private String getPieceName(int x, int y) {
+        Component c1 = chessBoard.findComponentAt(x, y);
+        if (c1 instanceof JPanel) {
+            return "empty";
+        } else if (c1 instanceof JLabel) {
+            JLabel awaitingPiece = (JLabel) c1;
+            String tmp1 = awaitingPiece.getIcon().toString();
+            return tmp1;
+        } else {
+            return "empty";
+        }
+    }
+
+    /*
+     * ----------------------------------------------- 
+     *              KINGUNDERTHREAT 
+     * This method checks if a king is under threat 
+     * We will use this in the Kings movements code
+     * -----------------------------------------------
+     */
+    private Boolean kingUnderThreat(int newX, int newY) {
         if ((piecePresent(newX, newY + 75) && getPieceName(newX, newY + 75).contains("King")
                 || (piecePresent(newX, newY - 75) && getPieceName(newX, newY - 75).contains("King")))) {
             return true;
@@ -337,14 +1487,37 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     }
 
     /*
-     * This method is called when we press the Mouse. So we need to find out what
-     * piece we have selected. We may also not have selected a piece!
+     * ------------------------------------------------------------------------
+     *                              MOUSEPRESSED 
+     * This method is called when we press the Mouse. Need to check
+     * what piece we selected. And if we even selected a piece
+     * ------------------------------------------------------------------------
      */
     public void mousePressed(MouseEvent e) {
+        // chessPiece = null;
+
+        // Component c = chessBoard.findComponentAt(e.getX(), e.getY());
+        // if (c instanceof JPanel)
+        // return;
+
+        // Point parentLocation = c.getParent().getLocation();
+        // xAdjustment = parentLocation.x - e.getX();
+        // yAdjustment = parentLocation.y - e.getY();
+        // chessPiece = (JLabel) c;
+        // initialX = e.getX();
+        // initialY = e.getY();
+        // startX = (e.getX() / 75);
+        // startY = (e.getY() / 75);
+        // chessPiece.setLocation(e.getX() + xAdjustment, e.getY() + yAdjustment);
+        // chessPiece.setSize(chessPiece.getWidth(), chessPiece.getHeight());
+        // layeredPane.add(chessPiece, JLayeredPane.DRAG_LAYER);
+
         chessPiece = null;
+        String name = getPieceName(e.getX(), e.getY());
         Component c = chessBoard.findComponentAt(e.getX(), e.getY());
-        if (c instanceof JPanel)
+        if (c instanceof JPanel) {
             return;
+        }
 
         Point parentLocation = c.getParent().getLocation();
         xAdjustment = parentLocation.x - e.getX();
@@ -354,6 +1527,10 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         initialY = e.getY();
         startX = (e.getX() / 75);
         startY = (e.getY() / 75);
+
+        if (name.contains("Knight")) {
+            getKnightMoves(startX, startY, name);
+        }
         chessPiece.setLocation(e.getX() + xAdjustment, e.getY() + yAdjustment);
         chessPiece.setSize(chessPiece.getWidth(), chessPiece.getHeight());
         layeredPane.add(chessPiece, JLayeredPane.DRAG_LAYER);
@@ -366,102 +1543,317 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     }
 
     /*
-     * This method is used when the Mouse is released...we need to make sure the
-     * move was valid before putting the piece back on the board.
+     * ----------------------------------------------------------------------------
+     *                             MOUSERELEASED 
+     * This method is used when the Mouse is released. Need to ensure
+     * it was a valid move
+     * ---------------------------------------------------------------------------
      */
     public void mouseReleased(MouseEvent e) {
-        if (chessPiece == null)
+        if (chessPiece == null) {
             return;
+        }
 
         chessPiece.setVisible(false);
         Boolean success = false;
+        Boolean promotion = false;
         Boolean progression = false;
         Component c = chessBoard.findComponentAt(e.getX(), e.getY());
+
         String tmp = chessPiece.getIcon().toString();
         String pieceName = tmp.substring(0, (tmp.length() - 4));
         Boolean validMove = false;
 
         int landingX = (e.getX() / 75);
         int landingY = (e.getY() / 75);
-        int xMovement = Math.abs((landingX - startX));
-        int yMovement = Math.abs((landingY - startY));
 
-        System.out.println("-------------");
-        System.out.println("The peice being moved is : " + pieceName);
-        System.out.println("Starting Coordinates: " + startX + " , " + startY);
-        System.out.println("X landing position on board: " + landingX);
-        System.out.println("Y landing position on board: " + landingY);
-        System.out.println("Landing Coordinates - X : " + landingX + ", Y : " + landingY);
-        System.out.println("X Movement : " + xMovement);
-        System.out.println("Y Movement : " + yMovement);
-        System.out.println("-------------");
+        int xMovement = Math.abs((e.getX() / 75) - startX);
+        int yMovement = Math.abs((e.getY() / 75) - startY);
+        System.out.println("----------------------------------------------");
+        System.out.println("Piece being moved is : " + pieceName);
+        System.out.println("Starting coordinates are : " + "( " + startX + "," + startY + ")");
+        System.out.println("xMovement is : " + xMovement);
+        System.out.println("yMovement is : " + yMovement);
+        System.out.println("Landing coordinates are : " + "( " + landingX + "," + landingY + ")");
+        System.out.println("----------------------------------------------");
 
+        Boolean possible = false;
+
+        /*
+         * ----------------------------------------- 
+         * Used to alternate turns between players
+         * -----------------------------------------
+         */
         if (whiteMove) {
-            if (pieceName.contains("White") && !(xMovement == 0 && yMovement == 0)) {
+            // If the pieceName is white and it moved from its original position
+            // if (pieceName.contains("White") && !(xMovement == 0 && yMovement == 0)) {
+            //     possible = true;
+            // }
+            if (pieceName.contains("White")) {
                 possible = true;
             }
-        } else {
-            if (pieceName.contains("Black") && !(xMovement == 0 && yMovement == 0)) {
-                possible = true;
-            }
+        } else if (pieceName.contains("Black")) {
+            // if (pieceName.contains("Black") && !(xMovement == 0 && yMovement == 0)) {
+            //     possible = true;
+            // }
+            possible = true;
         }
 
+        /*
+         * ---------------------------------------- 
+         * Changes title to show whose turn it is 
+         * ----------------------------------------
+         */
         String title = (whiteMove) ? "Blacks Turn" : "Whites Turn";
         this.setTitle(title);
 
+        /*
+         * ------------------------------------------------------------------------ KING
+         * MOVEMENTS King can only move any direction, vertically, horizentally or
+         * diagonally Cannot jump over a piece and unable to take its own color piece
+         * Has to be one square away from opponents King
+         * ------------------------------------------------------------------------
+         */
+        // If it is the correct players turn
         if (possible) {
+            // If the piece that is selected is a King
             if (pieceName.contains("King")) {
-                /**
-                 * The King can move any direction 1 square at a time and cannot jump a piece,
-                 * King can not kill its own piece. So, if we can write the logic what the king
-                 * cant do, we basically have a fully functional king. 1- King has to move i.e
-                 * (xMovement && yMovement can't be zero(its an invalid move)) and it should be
-                 * placed on the board 2- Their, has to be 1 square distance between opponent
-                 * Kings 3- Cannot kill its own piece, check for oppenent
-                 */
-                Boolean inTheWay = false;
-                int distance = Math.abs(startX - landingX);
-                // One Square at a time also(xMovement && yMovement can't be zero(its an invalid
-                // move)
-                if (xMovement > 1 || yMovement > 1 || (xMovement == 0 && yMovement == 0)) {
+                // Boolean inTheWay = false; // Boolean to check if there is a piece in the way.
+                // Unable to hop over pieces (Except the knight)
+                // int distance = Math.abs(startX - landingX); // Calculates distance from
+                // starting position to landing position
+                // // King can only move one square at a time.
+                // // If king moves horizentally or vertically more than one square or if the
+                // piece did not move at all
+                // if (xMovement > 1 || yMovement > 1 || (xMovement == 0 && yMovement == 0)) {
+                // validMove = false; // Invalid move
+                // } else {
+                // // Checks to ensure if piece was correctly placed on the board, i.e. piece
+                // stayed on the board
+                // if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7)))
+                // {
+                // validMove = false; // If so, invalid and placed back to original position
+                // } else {
+                // // If King moves 1 square in any direction and is not put in a dangerous
+                // position
+                // if (!(kingUnderThreat(e.getX(), e.getY()))) {
+                // if (!piecePresent(e.getX(), e.getY())) {
+                // validMove = true;
+                // } else {
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // }
+                // }
+                // }
+                // }
+                if ((xMovement == 0) && (yMovement == 0)) {
                     validMove = false;
-                } else {
-                    // the statement below checks if the piece is placed on the board, if not its an
-                    // invalid move
-                    if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) {
-                        validMove = false;
-                    } else {
-                        // Their, has to be 1 square distance between opponent Kings
-                        if (!(kingTaken(e.getX(), e.getY()))) {
-                            if (!piecePresent(e.getX(), e.getY())) {
-                                validMove = true;
-                            } else {
-                                validMove = completeMove(e.getX(), e.getY(), pieceName);
-                            }
+                } else if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) {
+                    validMove = false;
+                } else if ((xMovement > 1) || (yMovement > 1)) {
+                    validMove = false;
+                } else if ((getPieceName((e.getX() + 75), e.getY()).contains("King"))
+                        || (getPieceName((e.getX() - 75), e.getY()).contains("King"))
+                        || (getPieceName((e.getX()), (e.getY() + 75)).contains("King"))
+                        || (getPieceName((e.getX()), (e.getY() - 75)).contains("King"))
+                        || (getPieceName((e.getX() + 75), (e.getY() + 75)).contains("King"))
+                        || (getPieceName((e.getX() - 75), (e.getY() + 75)).contains("King"))
+                        || (getPieceName((e.getX() + 75), (e.getY() - 75)).contains("King"))
+                        || (getPieceName((e.getX() - 75), (e.getY() - 75)).contains("King"))) {
+                    validMove = false;
+                } else if (piecePresent(e.getX(), e.getY())) {
+                    if (pieceName.contains("White")) {
+                        if (checkWhiteOponent(e.getX(), e.getY())) {
+                            validMove = true;
                         }
+                    } else if (checkBlackOponent(e.getX(), e.getY())) {
+                        validMove = true;
                     }
+                } else {
+                    validMove = true;
                 }
             }
             // End of King Piece
 
+            /*
+             * -------------------------------------------------------------------------
+             * QUEEN MOVEMENTS QUEEN can move any direction, i.e. vertically, horizentally
+             * or diagonally Works like a bishop and rook
+             * -------------------------------------------------------------------------
+             */
             else if (pieceName.contains("Queen")) {
-                // Queen's moves: Compound of Rook and Bishop
-                // The Queen can move in a horizontal, vertical or diagonal direction as long as
-                // there are no pieces in the way.
-                Boolean inTheWay = false;
-                int distance = Math.abs(startX - landingX);
-                // the statement below checks if the piece is placed on the board, if not its an
-                // invalid move
+                // Boolean inTheWay = false;
+                // int distance = Math.abs(startX - landingX);
+                // // Checks to ensure if piece was correctly placed on the board, i.e. piece
+                // stayed on the board
+                // if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7)))
+                // {
+                // validMove = false;
+                // }
+                // // Allows the Queen to move like a Rook, i.e. horizenally or vertically
+                // // Moved one or more squares horizentally and did not move vertically, i.e.
+                // left or right
+                // else if (((Math.abs(startX - landingX) != 0) && (Math.abs(startY - landingY)
+                // == 0))
+                // // Opposite of the above, i.e. up or down
+                // || ((Math.abs(startX - landingX) == 0) && (Math.abs(landingY - startY) !=
+                // 0))) {
+                // // If it moved left or or down
+                // if (Math.abs(startX - landingX) != 0) {
+                // if (startX - landingX > 0) {
+                // for (int i = 0; i < xMovement; i++) {
+                // // Moved up
+                // if (piecePresent(initialX - (i * 75), e.getY())) { // If there is a piece
+                // present
+                // inTheWay = true; // Cannot move
+                // break;
+                // } else {
+                // inTheWay = false; // There isnt a piece in the way
+                // }
+                // }
+                // } else {
+                // for (int i = 0; i < xMovement; i++) {
+                // // Moved down
+                // if (piecePresent(initialX + (i * 75), e.getY())) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // }
+                // } else {
+                // if (startY - landingY > 0) {
+                // for (int i = 0; i < yMovement; i++) {
+                // // Moved left
+                // if (piecePresent(e.getX(), initialY - (i * 75))) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // } else {
+                // for (int i = 0; i < yMovement; i++) {
+                // // Moved right
+                // if (piecePresent(e.getX(), initialY + (i * 75))) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // }
+                // }
+
+                // if (inTheWay) {
+                // validMove = false;
+                // } else {
+                // // Checks to see if the opponent is in the way
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // }
+                // }
+                // // Allows queen to move like a bishop, i.e. diagonally
+                // else {
+                // if (Math.abs(startX - landingX) == Math.abs(startY - landingY)) {
+                // // Went diagonally left and down
+                // if ((startX - landingX < 0) && (startY - landingY < 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX + (i * 75)), initialY + (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // }
+                // // Went diagonally left and up
+                // else if ((startX - landingX < 0) && (startY - landingY > 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX + (i * 75)), initialY - (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // }
+                // // Went diagonally right and up
+                // else if ((startX - landingX > 0) && (startY - landingY > 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX - (i * 75)), initialY - (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // }
+                // // Went diagonally right and down
+                // else if ((startX - landingX > 0) && (startY - landingY < 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX - (i * 75)), initialY + (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // }
+                // if (inTheWay) {
+                // validMove = false;
+                // } else {
+                // // Checks if the piece in the way is an opponent piece and returns a Boolean
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // }
+                // }
+                // else {
+                // validMove = false;
+                // }
+                // }
+
+                boolean inTheWay = false;
                 if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) {
                     validMove = false;
-                }
-                /*
-                 * The code below adds the logic to the QueenPiece to move like a Rook Queen can
-                 * now move horzontially or vertically
-                 */
-                else if (((Math.abs(startX - landingX) != 0) && (Math.abs(startY - landingY) == 0))
-                        || ((Math.abs(startX - landingX) == 0) && (Math.abs(landingY - startY) != 0))) {
-                    if (Math.abs(startX - landingX) != 0) {
+                } else if (!pieceMove(landingX, landingY)) {
+                    validMove = false;
+                } else if (xMovement == yMovement) {
+                    if ((startX - landingX < 0) && (startY - landingY < 0)) {
+                        for (int i = 0; i < xMovement; i++) {
+                            if (piecePresent((initialX + (i * 75)), (initialY + (i * 75)))) {
+                                inTheWay = true;
+                            }
+                        }
+                    } else if ((startX - landingX < 0) && (startY - landingY > 0)) {
+                        for (int i = 0; i < xMovement; i++) {
+                            if (piecePresent((initialX + (i * 75)), (initialY - (i * 75)))) {
+                                inTheWay = true;
+                            }
+                        }
+                    } else if ((startX - landingX > 0) && (startY - landingY > 0)) {
+                        for (int i = 0; i < xMovement; i++) {
+                            if (piecePresent((initialX - (i * 75)), (initialY - (i * 75)))) {
+                                inTheWay = true;
+                            }
+                        }
+                    } else if ((startX - landingX > 0) && (startY - landingY < 0)) {
+                        for (int i = 0; i < xMovement; i++) {
+                            if (piecePresent((initialX - (i * 75)), (initialY + (i * 75)))) {
+                                inTheWay = true;
+                            }
+                        }
+                    }
+
+                    if (inTheWay) {
+                        validMove = false;
+                    } else if (piecePresent(e.getX(), (e.getY()))) {
+                        if (pieceName.contains("White")) {
+                            if (checkWhiteOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "Sorry, Better luck next time. The White AI has won the game!";
+                                }
+                            }
+                        } else {
+                            if (checkBlackOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "The Black Player has won the game!";
+                                }
+                            }
+                        }
+                    } else {
+                        validMove = true;
+                    }
+                } else if (((xMovement != 0) && (yMovement == 0)) || ((xMovement == 0) && (yMovement != 0))) {
+                    if (xMovement != 0) {
                         if (startX - landingX > 0) {
                             for (int i = 0; i < xMovement; i++) {
                                 if (piecePresent(initialX - (i * 75), e.getY())) {
@@ -505,202 +1897,338 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
                     if (inTheWay) {
                         validMove = false;
+                    } else if (piecePresent(e.getX(), (e.getY()))) {
+                        if (pieceName.contains("White")) {
+                            if (checkWhiteOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "Sorry, Better luck next time. The White AI has won the game!";
+                                }
+                            }
+                        } else if (checkBlackOponent(e.getX(), e.getY())) {
+                            validMove = true;
+                            if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                winner = "The Black Player has won the game!";
+                            }
+                        }
                     } else {
-                        // Checks if the piece in the way is an opponent piece and returns a Boolean
-                        validMove = completeMove(e.getX(), e.getY(), pieceName);
-                    }
-                }
-                /*
-                 * The code below allows the queen to move like a Bishop Our Queen can now do
-                 * valid bishop movement i.e diagonally
-                 */
-                else {
-                    if (Math.abs(startX - landingX) == Math.abs(startY - landingY)) {
-                        if ((startX - landingX < 0) && (startY - landingY < 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX + (i * 75)), initialY + (i * 75))) {
-                                    inTheWay = true;
-                                }
-                            }
-                        } else if ((startX - landingX < 0) && (startY - landingY > 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX + (i * 75)), initialY - (i * 75))) {
-                                    inTheWay = true;
-                                }
-                            }
-                        } else if ((startX - landingX > 0) && (startY - landingY > 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX - (i * 75)), initialY - (i * 75))) {
-                                    inTheWay = true;
-                                }
-                            }
-                        } else if ((startX - landingX > 0) && (startY - landingY < 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX - (i * 75)), initialY + (i * 75))) {
-                                    inTheWay = true;
-                                }
-                            }
-                        }
-                        if (inTheWay) {
-                            validMove = false;
-                        } else {
-                            // Checks if the piece in the way is an opponent piece and returns a Boolean
-                            validMove = completeMove(e.getX(), e.getY(), pieceName);
-                        }
-                    }
-
-                    else {
-                        validMove = false;
+                        validMove = true;
                     }
                 }
             }
             // End of Queen Piece
 
+            /*
+             * -----------------------------------------------------------------------
+             * KINGHT MOVEMENTS Knight can move in a L shape. If we move 2 squares on the
+             * x-axis, then we move 1 square on the y-axis
+             * -----------------------------------------------------------------------
+             */
             else if (pieceName.contains("Knight")) {
-                /*
-                 * Knights moves: Knight can only move in a L direction(meaning if movement on
-                 * X-axis(xMovement) == 1, then the movement on Y-axis(yMovement) == 2 (must)
-                 * and also the other way around. Also, We need to check the square that we are
-                 * moving to and make sure that if there is a piece present that its not our own
-                 * piece.
-                 */
+                // Checks to ensure if piece was correctly placed on the board, i.e. piece
+                // stayed on the board
+                // if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || landingY > 7)) {
+                // validMove = false;
+                // } else {
+                // if (((landingX == startX + 1) && (landingY == startY + 2))
+                // || ((landingX == startX - 1) && (landingY == startY + 2)) // Left one, up two
+                // || ((landingX == startX + 2) && (landingY == startY + 1)) // Right two, up
+                // one
+                // || ((landingX == startX - 2) && (landingY == startY + 1)) // Left two, up one
+                // || ((landingX == startX + 1) && (landingY == startY - 2)) // Right one, down
+                // two
+                // || ((landingX == startX - 1) && (landingY == startY - 2)) // Left one, down
+                // two
+                // || ((landingX == startX + 2) && (landingY == startY - 1)) // Right two, down
+                // one
+                // || ((landingX == startX - 2) && (landingY == startY - 1))) // Left two, down
+                // one
+                // {
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // } else {
+                // validMove = false;
+                // }
+                // }
 
-                // the statement below checks if the piece is placed on the board, if not its an
-                // invalid move
-                if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || landingY > 7)) {
-                    validMove = false;
-                } else {
-                    if (((landingX == startX + 1) && (landingY == startY + 2))
-                            || ((landingX == startX - 1) && (landingY == startY + 2))
-                            || ((landingX == startX + 2) && (landingY == startY + 1))
-                            || ((landingX == startX - 2) && (landingY == startY + 1))
-                            || ((landingX == startX + 1) && (landingY == startY - 2))
-                            || ((landingX == startX - 1) && (landingY == startY - 2))
-                            || ((landingX == startX + 2) && (landingY == startY - 1))
-                            || ((landingX == startX - 2) && (landingY == startY - 1))) {
-                        // Checks if the piece in the way is an opponent piece and returns a Boolean
-                        validMove = completeMove(e.getX(), e.getY(), pieceName);
-                    } else {
-                        validMove = false;
+                if (((xMovement == 1) && (yMovement == 2)) || ((xMovement == 2) && (yMovement == 1))) {
+                    if (!piecePresent(e.getX(), e.getY())) {
+                        validMove = true;
+                    } else if (pieceName.contains("White")) {
+                        if (checkWhiteOponent(e.getX(), e.getY())) {
+                            validMove = true;
+                            if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                winner = "Sorry, Better luck next time. The White AI has won the game!";
+                            }
+                        }
+                    } else if (checkBlackOponent(e.getX(), e.getY())) {
+                        validMove = true;
+                        if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                            winner = "The Black Player has won the game!";
+                        }
                     }
                 }
             }
             // End of Knight
 
+            /*
+             * ------------------------------------------------------------ ROOK MOVEMENTS
+             * Moves either horizentally or vertically Able to move as many squares but
+             * unable to jump over a piece
+             * ------------------------------------------------------------
+             */
             else if (pieceName.contains("Rook")) {
-                // Rook's Moves:
-                // Rook can either move horizontally or vertically.
-                // It can move any number of squares but cannot pass/jump through a piece.
                 Boolean inTheWay = false;
-                // Statement below cheks if the piece is placed on the board else its an invalid
-                // move.
+                // Checks to ensure if piece was correctly placed on the board, i.e. piece
+                // stayed on the board
+                // if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7)))
+                // {
+                // validMove = false;
+                // } else {
+                // // Same code as queen movements
+                // if (((Math.abs(startX - landingX) != 0) && (Math.abs(startY - landingY) ==
+                // 0))
+                // || ((Math.abs(startX - landingX) == 0) && (Math.abs(landingY - startY) !=
+                // 0))) {
+                // if (Math.abs(startX - landingX) != 0) {
+                // if (startX - landingX > 0) {
+                // for (int i = 0; i < xMovement; i++) {
+                // if (piecePresent(initialX - (i * 75), e.getY())) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // } else {
+                // for (int i = 0; i < xMovement; i++) {
+                // if (piecePresent(initialX + (i * 75), e.getY())) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // }
+                // } else {
+                // if (startY - landingY > 0) {
+                // for (int i = 0; i < yMovement; i++) {
+                // if (piecePresent(e.getX(), initialY - (i * 75))) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // } else {
+                // for (int i = 0; i < yMovement; i++) {
+                // if (piecePresent(e.getX(), initialY + (i * 75))) {
+                // inTheWay = true;
+                // break;
+                // } else {
+                // inTheWay = false;
+                // }
+                // }
+                // }
+                // }
+
+                // if (inTheWay) {
+                // validMove = false;
+                // } else {
+                // // Checks if the piece in the way is an opponent piece and returns a Boolean
+                // // true or false.
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // }
+
+                Boolean intheway = false;
                 if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) {
                     validMove = false;
-                } else {
-                    if (((Math.abs(startX - landingX) != 0) && (Math.abs(startY - landingY) == 0))
-                            || ((Math.abs(startX - landingX) == 0) && (Math.abs(landingY - startY) != 0))) {
-                        if (Math.abs(startX - landingX) != 0) {
-                            if (startX - landingX > 0) {
-                                for (int i = 0; i < xMovement; i++) {
-                                    if (piecePresent(initialX - (i * 75), e.getY())) {
-                                        inTheWay = true;
-                                        break;
-                                    } else {
-                                        inTheWay = false;
-                                    }
-                                }
-                            } else {
-                                for (int i = 0; i < xMovement; i++) {
-                                    if (piecePresent(initialX + (i * 75), e.getY())) {
-                                        inTheWay = true;
-                                        break;
-                                    } else {
-                                        inTheWay = false;
-                                    }
+                } else if (!pieceMove(landingX, landingY)) {
+                    validMove = false;
+                } else if (((xMovement != 0) && (yMovement == 0)) || ((xMovement == 0) && (yMovement != 0))) {
+                    if (xMovement != 0) {
+                        if (startX - landingX > 0) {
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent(initialX - (i * 75), e.getY())) {
+                                    intheway = true;
+                                    break;
+                                } else {
+                                    intheway = false;
                                 }
                             }
                         } else {
-                            if (startY - landingY > 0) {
-                                for (int i = 0; i < yMovement; i++) {
-                                    if (piecePresent(e.getX(), initialY - (i * 75))) {
-                                        inTheWay = true;
-                                        break;
-                                    } else {
-                                        inTheWay = false;
-                                    }
-                                }
-                            } else {
-                                for (int i = 0; i < yMovement; i++) {
-                                    if (piecePresent(e.getX(), initialY + (i * 75))) {
-                                        inTheWay = true;
-                                        break;
-                                    } else {
-                                        inTheWay = false;
-                                    }
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent(initialX + (i * 75), e.getY())) {
+                                    intheway = true;
+                                    break;
+                                } else {
+                                    intheway = false;
                                 }
                             }
-                        }
-
-                        if (inTheWay) {
-                            validMove = false;
-                        } else {
-                            // Checks if the piece in the way is an opponent piece and returns a Boolean
-                            // true or false.
-                            validMove = completeMove(e.getX(), e.getY(), pieceName);
                         }
                     } else {
-                        validMove = false;
+                        if (startY - landingY > 0) {
+                            for (int i = 0; i < yMovement; i++) {
+                                if (piecePresent(e.getX(), initialY - (i * 75))) {
+                                    intheway = true;
+                                    break;
+                                } else {
+                                    intheway = false;
+                                }
+                            }
+                        } else {
+                            for (int i = 0; i < yMovement; i++) {
+                                if (piecePresent(e.getX(), initialY + (i * 75))) {
+                                    intheway = true;
+                                    break;
+                                } else {
+                                    intheway = false;
+                                }
+                            }
+                        }
                     }
+                    if (intheway) {
+                        validMove = false;
+                    } else if (piecePresent(e.getX(), (e.getY()))) {
+                        if (pieceName.contains("White")) {
+                            if (checkWhiteOponent(e.getX(), e.getY())) {
+                                validMove = true;
+
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "Sorry, Better luck next time. The White AI has won the game!";
+                                }
+                            } else {
+                                validMove = false;
+                            }
+                        } else if (checkBlackOponent(e.getX(), e.getY())) {
+                            validMove = true;
+                            if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                winner = "The Black Player has won the game!";
+                            }
+                        } else {
+                            validMove = false;
+                        }
+                    } else {
+                        validMove = true;
+                    }
+                } else {
+                    validMove = false;
                 }
             }
             // End of Rook
 
+            /*
+             * ------------------------------------------------------------ BISHOP MOVEMENTS
+             * Moves diagonally, left or right Able to move as many squares but unable to
+             * jump over a piece
+             * ------------------------------------------------------------
+             */
             else if (pieceName.contains("Bishup")) {
-                /*
-                 * Bishop's moves: The bishop may move any number of squares on the same colured
-                 * squares in a diagonal direction until it is prevented from continuing by
-                 * another piece. It may then capture the opposing piece by landing on the
-                 * square. Bishop can't jump pieces unlike Knight.
-                 */
+                // Boolean inTheWay = false;
+                // int distance = Math.abs(startX - landingX);
+                // // Checks to ensure if piece was correctly placed on the board, i.e. piece
+                // stayed on the board
+                // if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7)))
+                // {
+                // validMove = false;
+                // } else {
+                // // Same code as queen movements
+                // validMove = true;
+                // if (Math.abs(startX - landingX) == Math.abs(startY - landingY)) {
+                // if ((startX - landingX < 0) && (startY - landingY < 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX + (i * 75)), initialY + (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // } else if ((startX - landingX < 0) && (startY - landingY > 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX + (i * 75)), initialY - (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // } else if ((startX - landingX > 0) && (startY - landingY > 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX - (i * 75)), initialY - (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // } else if ((startX - landingX > 0) && (startY - landingY < 0)) {
+                // for (int i = 0; i < distance; i++) {
+                // if (piecePresent((initialX - (i * 75)), initialY + (i * 75))) {
+                // inTheWay = true;
+                // }
+                // }
+                // }
+                // if (inTheWay) {
+                // validMove = false;
+                // } else {
+                // validMove = completeMove(e.getX(), e.getY(), pieceName);
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // }
+
                 Boolean inTheWay = false;
-                int distance = Math.abs(startX - landingX);
-                // the statement below checks if the piece is placed on the board, if not its an
-                // invalid move
                 if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) {
+                    validMove = false;
+                } else if (!pieceMove(landingX, landingY)) {
                     validMove = false;
                 } else {
                     validMove = true;
-                    if (Math.abs(startX - landingX) == Math.abs(startY - landingY)) {
+
+                    if (xMovement == yMovement) {
                         if ((startX - landingX < 0) && (startY - landingY < 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX + (i * 75)), initialY + (i * 75))) {
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent((initialX + (i * 75)), (initialY + (i * 75)))) {
                                     inTheWay = true;
                                 }
                             }
                         } else if ((startX - landingX < 0) && (startY - landingY > 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX + (i * 75)), initialY - (i * 75))) {
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent((initialX + (i * 75)), (initialY - (i * 75)))) {
                                     inTheWay = true;
                                 }
                             }
                         } else if ((startX - landingX > 0) && (startY - landingY > 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX - (i * 75)), initialY - (i * 75))) {
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent((initialX - (i * 75)), (initialY - (i * 75)))) {
                                     inTheWay = true;
                                 }
                             }
                         } else if ((startX - landingX > 0) && (startY - landingY < 0)) {
-                            for (int i = 0; i < distance; i++) {
-                                if (piecePresent((initialX - (i * 75)), initialY + (i * 75))) {
+                            for (int i = 0; i < xMovement; i++) {
+                                if (piecePresent((initialX - (i * 75)), (initialY + (i * 75)))) {
                                     inTheWay = true;
                                 }
                             }
                         }
                         if (inTheWay) {
                             validMove = false;
+                        } else if (piecePresent(e.getX(), (e.getY()))) {
+                            if (pieceName.contains("White")) {
+                                if (checkWhiteOponent(e.getX(), e.getY())) {
+                                    validMove = true;
+                                    if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                        winner = "Sorry, Better luck next time. The White AI has won the game!";
+                                    }
+                                } else {
+                                    validMove = false;
+                                }
+                            } else if (checkBlackOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "The Black Player has won the game!";
+                                }
+                            } else {
+                                validMove = false;
+                            }
                         } else {
-                            // Checks if the piece in the way is an opponent piece and returns a Boolean
-                            validMove = completeMove(e.getX(), e.getY(), pieceName);
+                            validMove = true;
                         }
                     } else {
                         validMove = false;
@@ -709,87 +2237,267 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             }
             // End of Bishop
 
+            /*
+             * -----------------------------------------------------------------------------
+             * ------ BLACK PAWN MOVEMENTS Can move forward one or two squares at its
+             * starting position, only one square after Able to take an enemy piece if its
+             * one square diagonally to the left or right Can be promoted to a Queen if it
+             * reaches the end of the board by either taking an enemy piece or on a blank
+             * square
+             * -----------------------------------------------------------------------------
+             * ------
+             */
             else if (pieceName.equals("BlackPawn")) {
                 // Starting position move, i.e at index 6 on y-axis
-                if ((startY == 6) && (startX == landingX) && (((startY - landingY) == 1) || (startY - landingY) == 2)) {
-                    if (!piecePresent(e.getX(), e.getY())) {
-                        validMove = true;
-                    } else {
-                        validMove = false;
-                    }
-                } 
-                // Moving forward and taking a white piece
-                else if ((Math.abs(startX - landingX) == 1) && (((startY - landingY) == 1))) {
-                    if (piecePresent(e.getX(), e.getY())) {
-                        if (checkBlackOponent(e.getX(), e.getY())) {
+                // if ((startY == 6) && (startX == landingX) && (((startY - landingY) == 1) ||
+                // (startY - landingY) == 2)) {
+                // if (!piecePresent(e.getX(), e.getY())) {
+                // validMove = true;
+                // } else {
+                // validMove = false;
+                // }
+                // }
+                // // Moving forward and taking a white piece
+                // else if ((Math.abs(startX - landingX) == 1) && (((startY - landingY) == 1)))
+                // {
+                // if (piecePresent(e.getX(), e.getY())) {
+                // if (checkBlackOponent(e.getX(), e.getY())) {
+                // validMove = true;
+                // // If pawn lands on end of board, i.e. pawn promotion
+                // if (landingY == 0) {
+                // progression = true;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // }
+                // // Moving to an empty square
+                // else if ((startY != 6) && ((startX == landingX) && (((startY - landingY) ==
+                // 1)))) {
+                // if (!piecePresent(e.getX(), e.getY())) {
+                // validMove = true;
+                // if (landingY == 0) {
+                // progression = true;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+
+                if (startY == 6) {
+
+                    if (((yMovement == 1) || (yMovement == 2)) && (startY > landingY) && (xMovement == 0)) {
+                        if (yMovement == 2) {
+                            if ((!piecePresent(e.getX(), e.getY())) && (!piecePresent(e.getX(), (e.getY() + 75)))) {
+                                validMove = true;
+                            }
+                        } else if (!piecePresent(e.getX(), e.getY())) {
                             validMove = true;
-                            // If pawn lands on end of board, i.e. pawn promotion
+                        }
+                    } else if ((yMovement == 1) && (startY > landingY) && (xMovement == 1)) {
+                        if (piecePresent(e.getX(), e.getY())) {
+                            if (checkBlackOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "The Black Player has won the game!";
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if (((yMovement == 1)) && (startY > landingY) && (xMovement == 0)) {
+                        if (!piecePresent(e.getX(), e.getY())) {
+                            validMove = true;
+
                             if (landingY == 0) {
                                 progression = true;
                             }
-                        } else {
-                            validMove = false;
                         }
-                    } else {
-                        validMove = false;
-                    }
-                } 
-                // Moving to an empty square
-                else if ((startY != 6) && ((startX == landingX) && (((startY - landingY) == 1)))) {
-                    if (!piecePresent(e.getX(), e.getY())) {
-                        validMove = true;
-                        if (landingY == 0) {
-                            progression = true;
+                    } else if ((yMovement == 1) && (startY > landingY) && (xMovement == 1)) {
+                        if (piecePresent(e.getX(), e.getY())) {
+                            if (checkBlackOponent(e.getX(), e.getY())) {
+                                validMove = true;
+                                if (landingY == 0) {
+                                    progression = true;
+                                }
+                                if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                    winner = "The Black Player has won the game!";
+                                }
+                            }
                         }
-                    } else {
-                        validMove = false;
                     }
-                } else {
-                    validMove = false;
                 }
             }
             // End of Black Pawn
 
+            /*
+             * -----------------------------------------------------------------------------
+             * ------ WHITE PAWN MOVEMENTS Can move forward one or two squares at its
+             * starting position, only one square after Able to take an enemy piece if its
+             * one square diagonally to the left or right Can be promoted to a Queen if it
+             * reaches the end of the board by either taking an enemy piece or on a blank
+             * square
+             * -----------------------------------------------------------------------------
+             * ------
+             */
             else if (pieceName.equals("WhitePawn")) {
                 // Starting position move, i.e at index 1 on y-axis
-                if ((startY == 1) && (startX == landingX) && (((landingY - startY) == 1) || (landingY - startY) == 2)) {
-                    if ((!piecePresent(e.getX(), e.getY()) && (!piecePresent(e.getX(), e.getY() - 75)))) {
-                        validMove = true;
-                    }
-                } 
-                // Moving forward and taking a black piece
-                else if ((Math.abs(landingX - startX) == 1) && (((landingY - startY) == 1))) {
-                    if (piecePresent(e.getX(), e.getY())) {
+                // if ((startY == 1) && (startX == landingX) && (((landingY - startY) == 1) ||
+                // (landingY - startY) == 2)) {
+                // if ((!piecePresent(e.getX(), e.getY()) && (!piecePresent(e.getX(), e.getY() -
+                // 75)))) {
+                // validMove = true;
+                // }
+                // }
+                // // Moving forward and taking a black piece
+                // else if ((Math.abs(landingX - startX) == 1) && (((landingY - startY) == 1)))
+                // {
+                // if (piecePresent(e.getX(), e.getY())) {
+                // if (checkWhiteOponent(e.getX(), e.getY())) {
+                // validMove = true;
+                // // If pawn lands on end of board, i.e. pawn promotion
+                // if (landingY == 7) {
+                // success = true;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // }
+                // // Moving to an empty square
+                // else if ((startY != 1) && ((startX == landingX) && (((landingY - startY) ==
+                // 1)))) {
+                // if (!piecePresent(e.getX(), e.getY())) {
+                // validMove = true;
+                // if (landingY == 7) {
+                // success = true;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // } else {
+                // validMove = false;
+                // }
+                // }
+                // End of White Pawn
+
+                if (startY == 1) {
+                    if (((xMovement == 0)) && ((yMovement == 1) || ((yMovement) == 2))) {
+                        if (yMovement == 2) {
+                            if ((!piecePresent(e.getX(), (e.getY()))) && (!piecePresent(e.getX(), (e.getY() - 75)))) {
+                                validMove = true;
+                            }
+                        } else if ((!piecePresent(e.getX(), (e.getY())))) {
+                            validMove = true;
+                        }
+                    } else if ((piecePresent(e.getX(), e.getY())) && (xMovement == yMovement) && (xMovement == 1)
+                            && (startY < landingY)) {
                         if (checkWhiteOponent(e.getX(), e.getY())) {
                             validMove = true;
-                            // If pawn lands on end of board, i.e. pawn promotion
-                            if (landingY == 7) {
+                            if (startY == 6) {
                                 success = true;
                             }
-                        } else {
-                            validMove = false;
+                            if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                winner = "Sorry, Better luck next time. The White AI has won the game!";
+                            }
                         }
-                    } else {
-                        validMove = false;
                     }
-                } 
-                // Moving to an empty square
-                else if ((startY != 1) && ((startX == landingX) && (((landingY - startY) == 1)))) {
-                    if (!piecePresent(e.getX(), e.getY())) {
-                        validMove = true;
-                        if (landingY == 7) {
-                            success = true;
+                } else if ((startX - 1 >= 0) || (startX + 1 <= 7)) {
+                    if ((piecePresent(e.getX(), e.getY())) && (xMovement == yMovement) && (xMovement == 1)) {
+                        if (checkWhiteOponent(e.getX(), e.getY())) {
+                            validMove = true;
+                            if (startY == 6) {
+                                success = true;
+                            }
+                            if (getPieceName(e.getX(), e.getY()).contains("King")) {
+                                winner = "Sorry, Better luck next time. The White AI has won the game!";
+                            }
                         }
-                    } else {
-                        validMove = false;
+                    } else if (!piecePresent(e.getX(), (e.getY()))) {
+                        if (((xMovement == 0)) && ((e.getY() / 75) - startY) == 1) {
+                            if (startY == 6) {
+                                success = true;
+                            }
+                            validMove = true;
+                        }
                     }
-                } else {
-                    validMove = false;
                 }
             }
-            // End of White Pawn
         }
         // End of Possible Wrapper
+
+        // if (!validMove) {
+        // int location = 0;
+        // if (startY == 0) {
+        // location = startX;
+        // } else {
+        // location = (startY * 8) + startX;
+        // }
+        // String pieceLocation = pieceName + ".png";
+        // pieces = new JLabel(new ImageIcon(pieceLocation));
+        // panels = (JPanel) chessBoard.getComponent(location);
+        // panels.add(pieces);
+        // } else {
+        // whiteMove = !whiteMove;
+        // possible = false;
+
+        // // Black pawn promotion
+        // if (progression) {
+        // int location = 0 + (e.getX() / 75);
+        // if (c instanceof JLabel) {
+        // // If black pawn takes a white piece at the end of the board
+        // Container parent = c.getParent();
+        // parent.remove(0);
+        // pieces = new JLabel(new ImageIcon("BlackQueen.png"));
+        // parent = (JPanel) chessBoard.getComponent(location);
+        // parent.add(pieces);
+        // } else {
+        // // If black pawn landed on an empty square at the end of the board
+        // Container parent = (Container) c;
+        // pieces = new JLabel(new ImageIcon("BlackQueen.png"));
+        // parent = (JPanel) chessBoard.getComponent(location);
+        // parent.add(pieces);
+        // }
+        // } else if (success) {
+        // int location = 56 + (e.getX() / 75);
+        // if (c instanceof JLabel) {
+        // // If white pawn takes a black piece at the end of the board
+        // Container parent = c.getParent();
+        // parent.remove(0);
+        // pieces = new JLabel(new ImageIcon("WhiteQueen.png"));
+        // parent = (JPanel) chessBoard.getComponent(location);
+        // parent.add(pieces);
+        // } else {
+        // // If white pawn landed on an empty square at the end of the board
+        // Container parent = (Container) c;
+        // pieces = new JLabel(new ImageIcon("WhiteQueen.png"));
+        // parent = (JPanel) chessBoard.getComponent(location);
+        // parent.add(pieces);
+        // }
+        // } else {
+        // if (c instanceof JLabel) {
+        // Container parent = c.getParent();
+        // parent.remove(0);
+        // parent.add(chessPiece);
+        // } else {
+        // Container parent = (Container) c;
+        // parent.add(chessPiece);
+        // }
+        // chessPiece.setVisible(true);
+        // if (winner != null) {
+        // JOptionPane.showMessageDialog(null, winner);
+        // System.exit(0);
+        // }
+        // }
+        // makeAIMove();
+        // }
 
         if (!validMove) {
             int location = 0;
@@ -803,37 +2511,39 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             panels = (JPanel) chessBoard.getComponent(location);
             panels.add(pieces);
         } else {
-            whiteMove = !whiteMove;
-            possible = false;
+            if (whiteMove) {
+                whiteMove = false;
+            } else {
+                whiteMove = true;
+            }
 
-            // Black pawn promotion
             if (progression) {
                 int location = 0 + (e.getX() / 75);
                 if (c instanceof JLabel) {
-                    // If black pawn takes a white piece at the end of the board
                     Container parent = c.getParent();
                     parent.remove(0);
                     pieces = new JLabel(new ImageIcon("BlackQueen.png"));
                     parent = (JPanel) chessBoard.getComponent(location);
                     parent.add(pieces);
                 } else {
-                    // If black pawn landed on an empty square at the end of the board
                     Container parent = (Container) c;
                     pieces = new JLabel(new ImageIcon("BlackQueen.png"));
                     parent = (JPanel) chessBoard.getComponent(location);
                     parent.add(pieces);
                 }
+                if (winner != null) {
+                    JOptionPane.showMessageDialog(null, winner);
+                    System.exit(0);
+                }
             } else if (success) {
                 int location = 56 + (e.getX() / 75);
                 if (c instanceof JLabel) {
-                    // If white pawn takes a black piece at the end of the board
                     Container parent = c.getParent();
                     parent.remove(0);
                     pieces = new JLabel(new ImageIcon("WhiteQueen.png"));
                     parent = (JPanel) chessBoard.getComponent(location);
                     parent.add(pieces);
                 } else {
-                    // If white pawn landed on an empty square at the end of the board
                     Container parent = (Container) c;
                     pieces = new JLabel(new ImageIcon("WhiteQueen.png"));
                     parent = (JPanel) chessBoard.getComponent(location);
@@ -849,34 +2559,54 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                     parent.add(chessPiece);
                 }
                 chessPiece.setVisible(true);
+                if (winner != null) {
+                    JOptionPane.showMessageDialog(null, winner);
+                    System.exit(0);
+                }
             }
+            makeAIMove();
         }
     }
 
     public void mouseClicked(MouseEvent e) {
-
     }
 
     public void mouseMoved(MouseEvent e) {
     }
 
     public void mouseEntered(MouseEvent e) {
-
     }
 
     public void mouseExited(MouseEvent e) {
-
     }
 
     /*
      * Main method that gets the ball moving.
      */
-    public static void main(String[] args) {
-        JFrame frame = new ChessProject();
+    public void startGame() {
+        ChessProject frame = new ChessProject();
         frame.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         frame.pack();
         frame.setResizable(true);
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
+        Object[] options = {"Random Moves", "Best Next Move", "Based on Opponents Moves"};
+        int gameOption = JOptionPane.showOptionDialog(frame, "Lets play some Chess, choose your AI opponent", "Introduction to AI Continuous Assessment",
+        JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE, null, options, options[2]);
+
+        switch (gameOption) {
+            case 0:
+                gameMode = GameMode.RANDOM;
+                break;
+            case 1:
+                gameMode = GameMode.NEXT_BEST_MOVE;
+                break;
+            case 2:
+                gameMode = GameMode.TWO_LEVELS_DEEP;
+                break;
+        }
+
+        System.out.println("The selected game mode is : " + gameMode.toString());
+        frame.makeAIMove();
     }
 }
