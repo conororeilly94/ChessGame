@@ -23,20 +23,21 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     int xAdjustment;
     int yAdjustment;
     int startX; // The x coordinate the piece started from.
-    int startY;
+    int startY; // The y coordinate the piece started from.
     int initialX;
     int initialY;
     JPanel panels;
     JLabel pieces;
-    Boolean whiteMove;
-    Boolean possible;
-    String winner;
+    Boolean whiteMove; // Checks if it is a white move
+    Boolean possible; // Checks to see if it is the correct players turn
+    String winner; // Checks for winner for each piece
 
-    AIAgent agent;
-    Boolean agentWinner;
-    Stack temporary;
+    AIAgent agent; 
+    Boolean agentWinner; // Used in AIMove
+    Stack temporary; // New stack instance
 
-    private enum GameMode { RANDOM, NEXT_BEST_MOVE, TWO_LEVELS_DEEP }
+    // For selecting game mode
+    private enum GameMode { RANDOM, NEXT_BEST_MOVE, TWO_LEVELS_DEEP } 
     private static GameMode gameMode;
 
     public static void main(String[] args) {
@@ -51,7 +52,8 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     public ChessProject() {
         Dimension boardSize = new Dimension(600, 600);
 
-        this.setTitle("Whites Turn");
+        // this.setTitle("Whites Turn");
+
         // Use a Layered Pane for this application
         layeredPane = new JLayeredPane();
         getContentPane().add(layeredPane);
@@ -72,9 +74,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
             int row = (i / 8) % 2;
             if (row == 0)
-                square.setBackground(i % 2 == 0 ? Color.white : Color.gray);
+                square.setBackground(i % 2 == 0 ? Color.lightGray : Color.darkGray);
             else
-                square.setBackground(i % 2 == 0 ? Color.gray : Color.white);
+                square.setBackground(i % 2 == 0 ? Color.darkGray : Color.lightGray);
         }
 
         // Setting up the Initial Chess board and the chess pieces
@@ -227,7 +229,11 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     public class AIAgent {
 
         ////////////////////////////////////////////////////////////////////////////////////////////////
-        /*The AIAgent Class provides 3 methods that return moves which our AI uses to play with the user*/
+        /*
+        *                                       AIAgent
+        * The AIAgent Class provides 3 methods that return moves which our AI uses to play with the user
+        *
+        */
         ////////////////////////////////////////////////////////////////////////////////////////////////
         
             Random rand;
@@ -237,7 +243,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             }
         
         ////////////////////////////////////////////////////////////////////////////////////////////////
-        /* Random Move */
+        /* 
+                                                Random Move 
+        */
         ////////////////////////////////////////////////////////////////////////////////////////////////
             public Move randomMove(Stack<Move> possibilities) {
         
@@ -252,152 +260,159 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                 return selectedMove;
             }
         ///////////////////////////////////////////////////////////////////////////////////////////////
-        /* Best Move 
+        /*                                           
+        *                                       Best Move 
             Does not care what happens after the movement. Could take pawn but immediately lose a high
             ranking piece as a result        
+        *
         */        
         ///////////////////////////////////////////////////////////////////////////////////////////////
         
-            public Move nextBestMove(Stack whitePossibilitiesStack, Stack blackPossibilitiesStack) {
-                Stack backupMove = (Stack) whitePossibilitiesStack.clone();
-                Stack blackStackM = (Stack) blackPossibilitiesStack.clone();
-                Move bestMove = null;
+            public Move nextBestMove(Stack whiteStack, Stack blackStack) {
+                Stack otherMove = (Stack) whiteStack.clone();
+                Stack blackStackM = (Stack) blackStack.clone();
+                Move bestNextMove = null;
                 Move whiteMove;
                 Move presentMove;
-                Square blackPosition;
-                int strength = 0;
-                int chosenPieceStrength = 0;
+                Square blackPos;
+                int strengthPiece = 0;
+                int strengthChosenPiece = 0;
         
-                while (!whitePossibilitiesStack.empty()) {
-                    whiteMove = (Move) whitePossibilitiesStack.pop();
+                // While stack is not empty
+                while (!whiteStack.empty()) {
+                    whiteMove = (Move) whiteStack.pop();
                     presentMove = whiteMove;
         
-                    //check if the centre of the board is occupied or not
+                    // This checks if the centre of the board is occupied by opponents pieces
+                    // Pawns (and Knight) only pieces able to begin game
                     if ((presentMove.getStart().getYC() < presentMove.getLanding().getYC())
-                    && (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 3)
-                    || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 3)
-                    || (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 4)
-                    || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 4)) {
+                        && (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 3)
+                        || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 3)
+                        || (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 4)
+                        || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 4)) {
         
-                      strength = 1;
+                        strengthPiece = 1;
         
-                        //updating the best move
-                        if (strength > chosenPieceStrength) {
-                            chosenPieceStrength = strength;
-                            bestMove = presentMove;
+                        // Compares the strength of the selected piece and the chosen piece to take
+                        if (strengthPiece > strengthChosenPiece) {
+                            strengthChosenPiece = strengthPiece;
+                            bestNextMove = presentMove;
                         }
                     }
         
-                    //compare white landing positions to black positions, return capture if available or random if not.
+                    // Check white landing pos to black pos, return best attacking move when piece has higher strength than centre
                     while (!blackStackM.isEmpty()) {
-                        strength = 0;
-                        blackPosition = (Square) blackStackM.pop();
-                        if ((presentMove.getLanding().getXC() == blackPosition.getXC()) && (presentMove.getLanding().getYC() == blackPosition.getYC())) {
+                        strengthPiece = 0;
+                        blackPos = (Square) blackStackM.pop();
+                        if ((presentMove.getLanding().getXC() == blackPos.getXC()) && (presentMove.getLanding().getYC() == blackPos.getYC())) {
         
-                            //Assign strength to pieces
-                            if (blackPosition.getName().equals("BlackQueen")) {
-                                strength = 9;
-                            } else if (blackPosition.getName().equals("BlackRook")) {
-                                strength = 5;
-                            } else if (blackPosition.getName().equals("BlackBishop") || blackPosition.getName().equals("BlackKnight")) {
-                                strength = 3;
-                            } else if (blackPosition.getName().equals("BlackPawn")) {
-                                strength = 1;
+                            // Assigning strength to pieces
+                            if (blackPos.getName().equals("BlackQueen")) {
+                                strengthPiece = 9;
+                            } else if (blackPos.getName().equals("BlackRook")) {
+                                strengthPiece = 5;
+                            } else if (blackPos.getName().equals("BlackBishop") || blackPos.getName().equals("BlackKnight")) {
+                                strengthPiece = 3;
+                            } else if (blackPos.getName().equals("BlackPawn")) {
+                                strengthPiece = 1;
                             } else {
-                                strength = 10;
+                                strengthPiece = 10; // King strength
                             }
                         }
-                        //updating the best move
-                        if (strength > chosenPieceStrength) {
-                            chosenPieceStrength = strength;
-                            bestMove = presentMove;
+                        // Updates the next best move
+                        if (strengthPiece > strengthChosenPiece) {
+                            strengthChosenPiece = strengthPiece;
+                            bestNextMove = presentMove;
                         }
                     }
-                    //reloading the black squares
-                    blackStackM = (Stack) blackPossibilitiesStack.clone();
+                    // Reloads black squares
+                    blackStackM = (Stack) blackStack.clone();
                 }
         
-                // Make the best move if not available make a random move.
-                if (chosenPieceStrength > 0) {
-                    System.out.println("Selected AI Agent - Next best move: " +chosenPieceStrength);
-                    return bestMove;
+                // If best next move available then perform move, if not do random move
+                if (strengthChosenPiece > 0) {
+                    System.out.println("Next best move strength: " + strengthChosenPiece);
+                    return bestNextMove;
                 }
         
-                return randomMove(backupMove);
+                return randomMove(otherMove);
         
             }
         
         
         ////////////////////////////////////////////////////////////////////////////////////////////////
-        /* Two Level Deep 
-        Looks ahead and tries to determine what the player is going to do
+        /*                              Two Level Deep 
+            Looks ahead and tries to determine what the player is going to do
         */
         ///////////////////////////////////////////////////////////////////////////////////////////////
-            public Move twoLevelsDeep(Stack whitePossibilitiesStack, Stack blackPossibilitiesStack) {
-                Stack backupMove = (Stack) whitePossibilitiesStack.clone();
-                Stack blackStackM = (Stack) blackPossibilitiesStack.clone();
-                Move bestMove = null;
+            public Move twoLevelsDeep(Stack whiteStack, Stack blackStack) {
+                Stack otherMove = (Stack) whiteStack.clone();
+                Stack blackStackM = (Stack) blackStack.clone();
+                Move bestNextMove = null;
                 Move whiteMove;
                 Move presentMove;
-                Square blackPosition;
-                int strength = 0;
-                int chosenPieceStrength = 0;
+                Square blackPos;
+                int strengthPiece = 0;
+                int strengthChosenPiece = 0;
         
-                while (!whitePossibilitiesStack.empty()) {
-                    whiteMove = (Move) whitePossibilitiesStack.pop();
+                // While stack is not empty
+                while (!whiteStack.empty()) {
+                    whiteMove = (Move) whiteStack.pop();
                     presentMove = whiteMove;
         
-                    //assign 1 strength to centre position on board
+                    // This checks if the centre of the board is occupied by opponents pieces
                     if ((presentMove.getStart().getYC() < presentMove.getLanding().getYC())
                             && (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 3)
                             || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 3)
                             || (presentMove.getLanding().getXC() == 3) && (presentMove.getLanding().getYC() == 4)
                             || (presentMove.getLanding().getXC() == 4) && (presentMove.getLanding().getYC() == 4)) {
-                        strength = 0;
-                        //assign best move
-                        if (strength > chosenPieceStrength) {
-                            chosenPieceStrength = strength;
-                            bestMove = presentMove;
+
+                                strengthPiece = 0;
+                                
+                        // Compares the strength of the selected piece and the chosen piece to take
+                        if (strengthPiece > strengthChosenPiece) {
+                            strengthChosenPiece = strengthPiece;
+                            bestNextMove = presentMove;
                         }
                     }
         
-                    //return a attacking best move when piece has higher strength than centre position
+                    // Check white landing pos to black pos, return best attacking move when piece has higher strength than centre
                     while (!blackStackM.isEmpty()) {
-                        strength = 0;
-                        blackPosition = (Square) blackStackM.pop();
-                        if ((presentMove.getLanding().getXC() == blackPosition.getXC()) && (presentMove.getLanding().getYC() == blackPosition.getYC())) {
+                        strengthPiece = 0;
+                        blackPos = (Square) blackStackM.pop();
+                        if ((presentMove.getLanding().getXC() == blackPos.getXC()) && (presentMove.getLanding().getYC() == blackPos.getYC())) {
         
-                          //Assign strength to pieces
-                          if (blackPosition.getName().equals("BlackQueen")) {
-                              strength = 9;
-                          } else if (blackPosition.getName().equals("BlackRook")) {
-                              strength = 5;
-                          } else if (blackPosition.getName().equals("BlackBishop") || blackPosition.getName().equals("BlackKnight")) {
-                              strength = 3;
-                          } else if (blackPosition.getName().equals("BlackPawn")) {
-                              strength = 1;
+                          // Assigning strength to pieces
+                          if (blackPos.getName().equals("BlackQueen")) {
+                            strengthPiece = 9;
+                          } else if (blackPos.getName().equals("BlackRook")) {
+                            strengthPiece = 5;
+                          } else if (blackPos.getName().equals("BlackBishop") || blackPos.getName().equals("BlackKnight")) {
+                            strengthPiece = 3;
+                          } else if (blackPos.getName().equals("BlackPawn")) {
+                            strengthPiece = 1;
                           } else {
-                              strength = 10;
+                            strengthPiece = 10; // King strength
                           }
                         }
         
-                        //updating the bestmove
-                        if (strength > chosenPieceStrength) {
-                            chosenPieceStrength = strength;
-                            bestMove = presentMove;
+                        // Updates the next best move
+                        if (strengthPiece > strengthChosenPiece) {
+                            strengthChosenPiece = strengthPiece;
+                            bestNextMove = presentMove;
                         }
                     }
         
-                    //reloading the black squares
-                    blackStackM = (Stack) blackPossibilitiesStack.clone();
+                    // Reloads black squares
+                    blackStackM = (Stack) blackStack.clone();
                 }
         
-                //Make the best move if not available make a random move.
-                if (chosenPieceStrength > 0) {
-                    System.out.println("Selected AI Agent - Two Level Deep: " +chosenPieceStrength);
-                    return bestMove;
+                // If best next move available then perform move, if not do random move
+                if (strengthChosenPiece > 0) {
+                    System.out.println("Selected AI Agent - Two Level Deep: " + strengthChosenPiece);
+                    return bestNextMove;
                 }
-                return randomMove(backupMove);
+                return randomMove(otherMove);
             }
         }
 
@@ -405,10 +420,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
      * -----------------------------------------------------------------------------
      *                          CHECKSURROUNDINGSQUARES 
      * -----------------------------------------------------------------------------
-     * Method to check if there is a BlackKing in
-     * the surrounding squares of a given Square. The method should return true if
-     * there is no King in any of the squares surrounding the square that was
-     * submitted to the method. 
+     * Method to check if there is a BlackKing in the surrounding squares of a given 
+     * Square. The method should return true if there is no King in any of the squares
+     * surrounding the square that was submitted to the method. 
      */
     private Boolean checkSurroundingSquares(Square s) {
         Boolean possible = false;
@@ -427,20 +441,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     /*
      * ------------------------------------------------- 
      *                  GETKINGSQUARES 
+     * Returns a stack of all possible moves the King
+     * can make
      * ------------------------------------------------- 
-     * The getKingSquares method takes as an input any coordinates from a square and
-     * returns a stack of all the possible valid moves that the WhiteKing can move
-     * to. So lets consider how the King can move. The King can essentially move in
-     * any direction as long as there is not another king in an adajacent square to
-     * were the king lands. Additionally, the King can only move one square at a
-     * time. To support this method we will also create a helper method called
-     * checkSurroundingSquares(Square s){, see above that returns a Boolean value to
-     * let us know if a supplied square will be adajacent to another square with a
-     * BlackKing present. Essentially if we consider that the board is a set of
-     * squares with coordinates for each square (x, y), this allows us to identify
-     * the possible squares that we should be investigating, see below;
-     * -----------------------------------------------------------------------------
-     * -------------------------------------------------
      */
     private Stack getKingSquares(int x, int y, String piece) {
         Square startingSquare = new Square(x, y, piece);
@@ -450,42 +453,8 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         int tmpx2 = x-1;
         int tmpy1 = y+1;
         int tmpy2 = y-1;
-      
-      /*
-        If we consider the grid above, we can create three different columes to check.
-          - if x increases by one square, using the variable tmpx1 (x+1)
-          - if x decreases by one square, using the variable tmpx2 (x-1)
-          - or if x stays the same.
-      */
+
         if(!((tmpx1 > 7))){
-          /*
-            This is the first condition where we will be working with the column where x increases.
-            If we consider x increasing, we need to make sure that we don't fall off the board, so we use
-            a condition here to check that the new value of x (tmpx1) is not greater than 7.
-      
-            From the grid above we can see in this column that there are three possible squares for us to check in
-            this column:
-            - were y decreases, y-1
-            - were y increases, y+1
-            - or were y stays the same
-      
-            The first step is to construct three new Squares for each of these possibilities.
-            As the unchanged y value is already a location on the board we don't need to check the location and can simply
-            make a call to checkSurroundingSquares for this new Square.
-      
-            If checkSurroundingSquares returns a positive value we jump inside the condition below:
-              - firstly we create a new Move, which takes the starting square and the landing square that we have just checked with
-                checkSurroundingSquares.
-              - Next we need to figure out if there is a piece present on the square and if so make sure
-                that the piece is an opponents piece.
-              - Once we make sure that we are either moving to an empty square or we are taking our opponents piece we can push this
-                possible move onto our stack of possible moves called "moves".
-      
-            This process is followed again for the other temporary squares created.
-      
-            After we check for all possoble squares on this column, we repeat the process for the other columns as identified above
-            in the grid.
-          */
           Square tmp = new Square(tmpx1, y, piece);
           Square tmp1 = new Square(tmpx1, tmpy1, piece);
           Square tmp2 = new Square(tmpx1, tmpy2, piece);
@@ -520,7 +489,8 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                 moves.push(validM3);
               }
               else{
-                System.out.println("The values that we are going to be looking at are : "+((tmp2.getXC()*75)+20)+" and the y value is : "+((tmp2.getYC()*75)+20));
+                System.out.println("The values that we are going to be looking at are : "
+                    +((tmp2.getXC()*75)+20)+" and the y value is : "+((tmp2.getYC()*75)+20));
                 if(checkWhiteOponent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
                   moves.push(validM3);
                 }
@@ -600,7 +570,6 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         }
         return moves;
     }
-    // end of the method getKingSquares()
 
     /*
      * ------------------------------------------------------------- 
@@ -613,12 +582,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         Stack completeMoves = new Stack();
         Stack tmpMoves = new Stack();
         Move tmp;
-        /*
-            The Queen is a pretty easy piece to figure out if you have completed the
-            Bishop and the Rook movements. Either the Queen is going to move like a
-            Bishop or its going to move like a Rook, so all we have to do is make a call to both of these
-            methods.
-        */
+
         tmpMoves = getRookMoves(x, y, piece);
         while(!tmpMoves.empty()){
             tmp = (Move)tmpMoves.pop();
@@ -641,106 +605,93 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         Square startingSquare = new Square(x, y, piece);
         Stack moves = new Stack();
         Move validM, validM2, validM3, validM4;
-        /*
-            There are four possible directions that the Rook can move to:
-            - the x value is increasing
-            - the x value is decreasing
-            - the y value is increasing
-            - the y value is decreasing
 
-            Each of these movements should be catered for. The loop guard is set to incriment up to the maximun number of squares.
-            On each iteration of the first loop we are adding the value of i to the current x coordinate.
-            We make sure that the new potential square is going to be on the board and if it is we create a new square and a new potential
-            move (originating square, new square).If there are no pieces present on the potential square we simply add it to the Stack
-            of potential moves.
-            If there is a piece on the square we need to check if its an opponent piece. If it is an opponent piece its a valid move, but we
-            must break out of the loop using the Java break keyword as we can't jump over the piece and search for squares. If its not
-            an opponent piece we simply break out of the loop.
-
-            This cycle needs to happen four times for each of the possible directions of the Rook.
-        */
         for(int i=1;i < 8;i++){
             int tmpx = x+i;
             int tmpy = y;
             if(!(tmpx > 7 || tmpx < 0)){
-            Square tmp = new Square(tmpx, tmpy, piece);
-            validM = new Move(startingSquare, tmp);
-            if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
-                moves.push(validM);
-            }
-            else{
-                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
-                moves.push(validM);
-                break;
+                Square tmp = new Square(tmpx, tmpy, piece);
+                validM = new Move(startingSquare, tmp);
+                if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+                    moves.push(validM);
                 }
                 else{
-                break;
+                    if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                    moves.push(validM);
+                    break;
+                    }
+                    else{
+                    break;
+                    }
                 }
             }
-            }
-        }//end of the loop with x increasing and Y doing nothing...
+        }
         for(int j=1;j < 8;j++){
             int tmpx1 = x-j;
             int tmpy1 = y;
+
             if(!(tmpx1 > 7 || tmpx1 < 0)){
-            Square tmp2 = new Square(tmpx1, tmpy1, piece);
-            validM2 = new Move(startingSquare, tmp2);
-            if(!piecePresent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
-                moves.push(validM2);
-            }
-            else{
-                if(checkWhiteOponent(((tmp2.getXC()*75)+20), ((tmp2.getYC()*75)+20))){
-                moves.push(validM2);
-                break;
+                Square tmp2 = new Square(tmpx1, tmpy1, piece);
+                validM2 = new Move(startingSquare, tmp2);
+                if(!piecePresent(((tmp2.getXC()*75)+20), (((tmp2.getYC()*75)+20)))){
+                    moves.push(validM2);
                 }
-                else{
-                break;
+                else {
+                    if(checkWhiteOponent(((tmp2.getXC()*75)+20), ((tmp2.getYC()*75)+20))){
+                        moves.push(validM2);
+                        break;
+                    }
+                    else {
+                        break;
+                    }
                 }
             }
-            }
-        }//end of the loop with x increasing and Y doing nothing...
-        for(int k=1;k < 8;k++){
+        }
+
+        for(int k=1;k < 8;k++) {
             int tmpx3 = x;
             int tmpy3 = y+k;
+
             if(!(tmpy3 > 7 || tmpy3 < 0)){
-            Square tmp3 = new Square(tmpx3, tmpy3, piece);
-            validM3 = new Move(startingSquare, tmp3);
-            if(!piecePresent(((tmp3.getXC()*75)+20), (((tmp3.getYC()*75)+20)))){
-                moves.push(validM3);
-            }
-            else{
-                if(checkWhiteOponent(((tmp3.getXC()*75)+20), ((tmp3.getYC()*75)+20))){
-                moves.push(validM3);
-                break;
+                Square tmp3 = new Square(tmpx3, tmpy3, piece);
+                validM3 = new Move(startingSquare, tmp3);
+                if(!piecePresent(((tmp3.getXC()*75)+20), (((tmp3.getYC()*75)+20)))){
+                    moves.push(validM3);
                 }
-                else{
-                break;
+                else {
+                    if(checkWhiteOponent(((tmp3.getXC()*75)+20), ((tmp3.getYC()*75)+20))){
+                        moves.push(validM3);
+                        break;
+                    }
+                    else {
+                        break;
+                    }
                 }
             }
-            }
-        }//end of the loop with x increasing and Y doing nothing...
-        for(int l=1;l < 8;l++){
+        }
+
+        for(int l=1;l < 8;l++) {
             int tmpx4 = x;
             int tmpy4 = y-l;
             if(!(tmpy4 > 7 || tmpy4 < 0)){
-            Square tmp4 = new Square(tmpx4, tmpy4, piece);
-            validM4 = new Move(startingSquare, tmp4);
-            if(!piecePresent(((tmp4.getXC()*75)+20), (((tmp4.getYC()*75)+20)))){
-                moves.push(validM4);
-            }
-            else{
-                if(checkWhiteOponent(((tmp4.getXC()*75)+20), ((tmp4.getYC()*75)+20))){
-                moves.push(validM4);
-                break;
+                Square tmp4 = new Square(tmpx4, tmpy4, piece);
+                validM4 = new Move(startingSquare, tmp4);
+                if(!piecePresent(((tmp4.getXC()*75)+20), (((tmp4.getYC()*75)+20)))) {
+                    moves.push(validM4);
                 }
-                else{
-                break;
+                else {
+                    if(checkWhiteOponent(((tmp4.getXC()*75)+20), ((tmp4.getYC()*75)+20))){
+                    moves.push(validM4);
+                    break;
+                    }
+                    else{
+                    break;
+                    }
                 }
             }
-            }
-        }//end of the loop with x increasing and Y doing nothing...
+        }
         return moves;
-    }// end of get Rook Moves.
+    }
 
     /*
      * -----------------------------------------------------------------------------
@@ -751,81 +702,67 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         Square startingSquare = new Square(x, y, piece);
         Stack moves = new Stack();
         Move validM, validM2, validM3, validM4;
-        /*
-            The Bishop can move along any diagonal until it hits an enemy piece or its own piece
-            it cannot jump over its own piece. We need to use four different loops to go through the possible movements
-            to identify possible squares to move to. The temporary squares, i.e. the values of x and y must change by the
-            same amount on each iteration of each of the loops.
 
-            If the new values of x and y are on the board, we create a new square and a new move (from the original square to the new
-            square). We then check if there is a piece present on the new square:
-            - if not we add the move as a possible new move
-            - if there is a piece we make sure that we can capture our opponents piece and we cannot take our own piece
-            and then we break out of the loop
-
-            This process is repeated for each of the other three possible diagonals that the Bishop can travel along.
-
-        */
         for(int i=1;i < 8;i++){
             int tmpx = x+i;
             int tmpy = y+i;
             if(!(tmpx > 7 || tmpx < 0 || tmpy > 7 || tmpy < 0)){
-            Square tmp = new Square(tmpx, tmpy, piece);
-            validM = new Move(startingSquare, tmp);
-            if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
-                moves.push(validM);
-            }
-            else{
-                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
-                moves.push(validM);
-                break;
+                Square tmp = new Square(tmpx, tmpy, piece);
+                validM = new Move(startingSquare, tmp);
+                if(!piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
+                    moves.push(validM);
                 }
                 else{
-                break;
+                    if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                    moves.push(validM);
+                    break;
+                    }
+                    else{
+                    break;
+                    }
                 }
             }
-            }
-        } // end of the first for Loop
+        }
         for(int k=1;k < 8;k++){
             int tmpk = x+k;
             int tmpy2 = y-k;
             if(!(tmpk > 7 || tmpk < 0 || tmpy2 > 7 || tmpy2 < 0)){
-            Square tmpK1 = new Square(tmpk, tmpy2, piece);
-            validM2 = new Move(startingSquare, tmpK1);
-            if(!piecePresent(((tmpK1.getXC()*75)+20), (((tmpK1.getYC()*75)+20)))){
-                moves.push(validM2);
-            }
-            else{
-                if(checkWhiteOponent(((tmpK1.getXC()*75)+20), ((tmpK1.getYC()*75)+20))){
-                moves.push(validM2);
-                break;
+                Square tmpK1 = new Square(tmpk, tmpy2, piece);
+                validM2 = new Move(startingSquare, tmpK1);
+                if(!piecePresent(((tmpK1.getXC()*75)+20), (((tmpK1.getYC()*75)+20)))){
+                    moves.push(validM2);
                 }
                 else{
-                break;
+                    if(checkWhiteOponent(((tmpK1.getXC()*75)+20), ((tmpK1.getYC()*75)+20))){
+                    moves.push(validM2);
+                    break;
+                    }
+                    else{
+                    break;
+                    }
                 }
             }
-            }
-        } //end of second loop.
+        }
         for(int l=1;l < 8;l++){
             int tmpL2 = x-l;
             int tmpy3 = y+l;
             if(!(tmpL2 > 7 || tmpL2 < 0 || tmpy3 > 7 || tmpy3 < 0)){
-            Square tmpLMov2 = new Square(tmpL2, tmpy3, piece);
-            validM3 = new Move(startingSquare, tmpLMov2);
-            if(!piecePresent(((tmpLMov2.getXC()*75)+20), (((tmpLMov2.getYC()*75)+20)))){
-                moves.push(validM3);
-            }
-            else{
-                if(checkWhiteOponent(((tmpLMov2.getXC()*75)+20), ((tmpLMov2.getYC()*75)+20))){
-                moves.push(validM3);
-                break;
+                Square tmpLMov2 = new Square(tmpL2, tmpy3, piece);
+                validM3 = new Move(startingSquare, tmpLMov2);
+                if(!piecePresent(((tmpLMov2.getXC()*75)+20), (((tmpLMov2.getYC()*75)+20)))){
+                    moves.push(validM3);
                 }
                 else{
-                break;
+                    if(checkWhiteOponent(((tmpLMov2.getXC()*75)+20), ((tmpLMov2.getYC()*75)+20))){
+                    moves.push(validM3);
+                        break;
+                    }
+                    else {
+                        break;
+                    }
                 }
             }
-            }
-        }// end of the third loop
+        }
         for(int n=1;n < 8;n++){
             int tmpN2 = x-n;
             int tmpy4 = y-n;
@@ -834,18 +771,18 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                 validM4 = new Move(startingSquare, tmpNmov2);
                 if(!piecePresent(((tmpNmov2.getXC()*75)+20), (((tmpNmov2.getYC()*75)+20)))){
                     moves.push(validM4);
-            }
-            else{
-                if(checkWhiteOponent(((tmpNmov2.getXC()*75)+20), ((tmpNmov2.getYC()*75)+20))){
-                    moves.push(validM4);
-                    break;
                 }
                 else{
-                    break;
+                    if(checkWhiteOponent(((tmpNmov2.getXC()*75)+20), ((tmpNmov2.getYC()*75)+20))){
+                        moves.push(validM4);
+                        break;
+                    }
+                    else{
+                        break;
+                    }
                 }
             }
-            }
-        }// end of the last loop
+        }
         return moves;
     }
 
@@ -853,12 +790,6 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
      * -----------------------------------------------------------------------------
      *                          GETKNIGHTMOVES 
      * -----------------------------------------------------------------------------
-     * Method fo return all the squares that a Knight can attack. The knight is possibly the simplest piece
-     * to get possible movements from. The Knight can essentially move in an L
-     * direction from any square on the board as long as the landing square is on
-     * the board and we can take an opponents piece but not our own piece.
-     * -----------------------------------------------------------------------------
-     * --------------------------------
      */
     private Stack getKnightMoves(int x, int y, String piece) {
         Square startingSquare = new Square(x, y, piece);
@@ -885,17 +816,17 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             Square tmp = (Square)moves.pop();
             Move tmpmove = new Move(startingSquare, tmp);
             if((tmp.getXC() < 0)||(tmp.getXC() > 7)||(tmp.getYC() < 0)||(tmp.getYC() > 7)){
-
+                // ????
             }
             else if(piecePresent(((tmp.getXC()*75)+20), (((tmp.getYC()*75)+20)))){
-            if(piece.contains("White")){
-                if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
-                attackingMove.push(tmpmove);
+                if(piece.contains("White")){
+                    if(checkWhiteOponent(((tmp.getXC()*75)+20), ((tmp.getYC()*75)+20))){
+                        attackingMove.push(tmpmove);
+                    }
                 }
             }
-            }
             else{
-            attackingMove.push(tmpmove);
+                attackingMove.push(tmpmove);
             }
         }
         return attackingMove;
@@ -1003,16 +934,6 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
      * This method checks if there is a piece occupied on the particular square
      * ---------------------------------------------------------------------------
      */
-    // private Boolean piecePresent(int x, int y) {
-    //     Component c = chessBoard.findComponentAt(x, y);
-    //     // If there is a piece at the square
-    //     if (c instanceof JPanel) {
-    //         return false;
-    //     } else {
-    //         return true;
-    //     }
-    // }
-
     public Boolean piecePresent(int x, int y) {
         Component c = chessBoard.findComponentAt(x, y);
         return !(c instanceof JPanel);
@@ -1026,6 +947,11 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         return !(c instanceof JPanel);
     }
 
+     /*
+     * ---------------------------------------------------------------------------
+     *                              GETWHITEPAWNMOVES 
+     * ---------------------------------------------------------------------------
+     */
     Stack<Move> getWhitePawnMoves(int x, int y, String piece) {
         Square startingSquare = new Square(x ,y ,piece);
         Square downOneSquare = new Square(x, y + 1, piece);
@@ -1059,6 +985,44 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     }
 
     /*
+     * ---------------------------------------------------------------------------
+     *                              GETBLACKPAWNMOVES 
+     * ---------------------------------------------------------------------------
+     */
+    Stack<Move> getBlackPawnMoves(int x, int y, String piece) {
+        Square startingSquare = new Square(x ,y ,piece);
+        Square upOneSquare = new Square(x, y - 1, piece);
+        Square upTwoSquare = new Square(x, y - 2, piece);
+        Square leftDiagonalSquare = new Square(x - 1, y - 1, piece);
+        Square rightDiagonalSquare = new Square(x + 1, y - 1, piece);
+
+        Stack<Move> moves = new Stack<>();
+        boolean isStartingPosition = (startingSquare.getYC() == 6);
+
+        // Check squares below
+        if(!piecePresent(upOneSquare)) {
+            moves.push(new Move(startingSquare, upOneSquare));
+
+            if(isStartingPosition && !piecePresent(upTwoSquare)) {
+                moves.push(new Move(startingSquare, upTwoSquare));
+            }
+        }
+
+        // Check left diagonal square for opponent
+        if(leftDiagonalSquare.getXC() >= 0 && piecePresent(leftDiagonalSquare) && checkBlackOponent(((leftDiagonalSquare.getXC() * 75) + 20), ((leftDiagonalSquare.getYC() * 75) + 20))) {
+            moves.push(new Move(startingSquare, leftDiagonalSquare));
+        }
+
+        // Check right diagonal square for opponent
+        if(rightDiagonalSquare.getXC() <= 7 && piecePresent(rightDiagonalSquare) && checkBlackOponent(((rightDiagonalSquare.getXC() * 75) + 20), ((rightDiagonalSquare.getYC() * 75) + 20))) {
+            moves.push(new Move(startingSquare, rightDiagonalSquare));
+        }
+
+        return moves;
+    }
+
+
+    /*
      * ----------------------------------- 
      *          RESETBORDERS
      * -----------------------------------
@@ -1070,24 +1034,6 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             tmppanel.setBorder(empty);
         }
     }
-
-    /*
-     * --------------------------------------------------------------------------------- 
-     *                                  PRINTSTACK 
-     * The method printStack takes in a Stack of Moves and prints out all possible moves.
-     * ---------------------------------------------------------------------------------
-     * 
-     */
-    // private void printStack(Stack input) {
-    //     Move m;
-    //     Square s, l;
-    //     while(!input.empty()){
-    //         m = (Move)input.pop();
-    //         s = (Square)m.getStart();
-    //         l = (Square)m.getLanding();
-    //         System.out.println("The possible move that was found is : ("+s.getXC()+" , "+s.getYC()+"), landing at ("+l.getXC()+" , "+l.getYC()+")");
-    //     }
-    // }
 
     /*
      * --------------------------------------------------- 
@@ -1137,6 +1083,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         temporary = (Stack)completeMoves.clone();
         getLandingSquares(temporary);
         // printStack(temporary);
+
         /*
         So now we should have a copy of all the possible moves to make in our Stack called completeMoves
         */
@@ -1150,12 +1097,6 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
         }
         else{
-        /*
-            Okay, so we can make a move now. We have a stack of all possible moves and need to call the correct agent to select
-            one of these moves. Lets print out the possible moves to the standard output to view what the options are for
-            White. Later when you are finished the continuous assessment you don't need to have such information being printed
-            out to the standard output.
-        */
             System.out.println("=============================================================");
             Stack testing = new Stack();            
             while(!completeMoves.empty()){
@@ -1168,6 +1109,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             System.out.println("=============================================================");
             Border redBorder = BorderFactory.createLineBorder(Color.RED, 3);
 
+            // Checks which game mode player selected
             Move selectedMove;
             switch (gameMode) {
                 case RANDOM:
@@ -1183,9 +1125,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                     selectedMove = agent.randomMove(testing);
                     break;
             }
-
-
-            //Move selectedMove = agent.twoLevelsDeep(testing, black);            
+          
             Square startingPoint = (Square)selectedMove.getStart();
             Square landingPoint = (Square)selectedMove.getLanding();
             int startX1 = (startingPoint.getXC()*75)+20;
@@ -1207,9 +1147,11 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                 Container parentlanding = l.getParent();
                 JLabel awaitingName = (JLabel)l;
                 String agentCaptured = awaitingName.getIcon().toString();
+
                 if(agentCaptured.contains("King")){
-                agentWinner = true;
+                    agentWinner = true;
                 }
+
                 parentlanding.remove(l);
                 parentlanding.validate();
                 pieces = new JLabel( new ImageIcon(startingPoint.getName()+".png") );
@@ -1221,8 +1163,8 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                 layeredPane.repaint();
 
                 if(agentWinner){
-                JOptionPane.showMessageDialog(null, "The AI Agent has won!");
-                System.exit(0);
+                    JOptionPane.showMessageDialog(null, "The AI Agent has won!");
+                    System.exit(0);
                 }
                 
                 if (startingPoint.getName().contains("Pawn") && landingPoint.getYC() == 7) {
@@ -1244,9 +1186,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             }
             whiteMove = false;
         }
-    }
-
-    
+    }    
 
     /*
      * -------------------------------------------------- 
@@ -1445,8 +1385,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
     }
 
     /*
-     * ----------------------------------------------- GETPIECENAME This method
-     * checks the name of a chess piece
+     * ----------------------------------------------- 
+     *              GETPIECENAME 
+     * This method checks the name of a chess piece
      * -----------------------------------------------
      */
     private String getPieceName(int x, int y) {
@@ -1608,8 +1549,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
         this.setTitle(title);
 
         /*
-         * ------------------------------------------------------------------------ KING
-         * MOVEMENTS King can only move any direction, vertically, horizentally or
+         * ------------------------------------------------------------------------ 
+         *                           KING MOVEMENTS 
+         * King can only move any direction, vertically, horizentally or
          * diagonally Cannot jump over a piece and unable to take its own color piece
          * Has to be one square away from opponents King
          * ------------------------------------------------------------------------
@@ -1676,8 +1618,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
             /*
              * -------------------------------------------------------------------------
-             * QUEEN MOVEMENTS QUEEN can move any direction, i.e. vertically, horizentally
-             * or diagonally Works like a bishop and rook
+             *                          QUEEN MOVEMENTS 
+             * QUEEN can move any direction, i.e. vertically, horizentally or diagonally 
+             * Works like a bishop and rook
              * -------------------------------------------------------------------------
              */
             else if (pieceName.contains("Queen")) {
@@ -1920,8 +1863,9 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
             /*
              * -----------------------------------------------------------------------
-             * KINGHT MOVEMENTS Knight can move in a L shape. If we move 2 squares on the
-             * x-axis, then we move 1 square on the y-axis
+             *                          KINGHT MOVEMENTS 
+             * Knight can move in a L shape. If we move 2 squares on the x-axis, then 
+             * we move 1 square on the y-axis
              * -----------------------------------------------------------------------
              */
             else if (pieceName.contains("Knight")) {
@@ -1971,9 +1915,10 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             // End of Knight
 
             /*
-             * ------------------------------------------------------------ ROOK MOVEMENTS
-             * Moves either horizentally or vertically Able to move as many squares but
-             * unable to jump over a piece
+             * ------------------------------------------------------------ 
+             *                          ROOK MOVEMENTS
+             * Moves either horizentally or vertically Able to move as many 
+             * squares but unable to jump over a piece
              * ------------------------------------------------------------
              */
             else if (pieceName.contains("Rook")) {
@@ -2121,9 +2066,10 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             // End of Rook
 
             /*
-             * ------------------------------------------------------------ BISHOP MOVEMENTS
-             * Moves diagonally, left or right Able to move as many squares but unable to
-             * jump over a piece
+             * ------------------------------------------------------------ 
+             *                      BISHOP MOVEMENTS
+             * Moves diagonally, left or right Able to move as many squares 
+             * but unable to jump over a piece
              * ------------------------------------------------------------
              */
             else if (pieceName.contains("Bishup")) {
@@ -2239,13 +2185,12 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
             /*
              * -----------------------------------------------------------------------------
-             * ------ BLACK PAWN MOVEMENTS Can move forward one or two squares at its
-             * starting position, only one square after Able to take an enemy piece if its
-             * one square diagonally to the left or right Can be promoted to a Queen if it
-             * reaches the end of the board by either taking an enemy piece or on a blank
-             * square
-             * -----------------------------------------------------------------------------
-             * ------
+             *                              BLACK PAWN MOVEMENTS 
+             * Can move forward one or two squares at its starting position, only one square 
+             * after Able to take an enemy piece if its one square diagonally to the left or 
+             * right Can be promoted to a Queen if it reaches the end of the board by either 
+             * taking an enemy piece or on a blank square
+             * -----------------------------------------------------------------------------            
              */
             else if (pieceName.equals("BlackPawn")) {
                 // Starting position move, i.e at index 6 on y-axis
@@ -2336,14 +2281,13 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
             // End of Black Pawn
 
             /*
+             * ----------------------------------------------------------------------------- 
+             *              WHITE PAWN MOVEMENTS 
+             * Can move forward one or two squares at its starting position, only one square 
+             * after Able to take an enemy piece if its one square diagonally to the left or 
+             * right Can be promoted to a Queen if it reaches the end of the board by either 
+             * taking an enemy piece or on a blank square
              * -----------------------------------------------------------------------------
-             * ------ WHITE PAWN MOVEMENTS Can move forward one or two squares at its
-             * starting position, only one square after Able to take an enemy piece if its
-             * one square diagonally to the left or right Can be promoted to a Queen if it
-             * reaches the end of the board by either taking an enemy piece or on a blank
-             * square
-             * -----------------------------------------------------------------------------
-             * ------
              */
             else if (pieceName.equals("WhitePawn")) {
                 // Starting position move, i.e at index 1 on y-axis
@@ -2582,7 +2526,7 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
 
     /*
      * Main method that gets the ball moving.
-     */
+    */
     public void startGame() {
         ChessProject frame = new ChessProject();
         frame.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
