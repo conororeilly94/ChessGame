@@ -1576,13 +1576,15 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
          * ------------------------------------------------------------------------
          */
         if (possible) {
+            // If the piece that is selected is a King
             if (pieceName.contains("King")) {
-                if ((xMovement == 0) && (yMovement == 0)) { 
-                    validMove = false;
-                } else if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) { 
-                    validMove = false;
-                } else if ((xMovement > 1) || (yMovement > 1)) { 
-                    validMove = false; 
+                if ((xMovement == 0) && (yMovement == 0)) { // King did not move
+                    validMove = false; // Vot valid
+                } else if (((landingX < 0) || (landingX > 7)) || ((landingY < 0) || (landingY > 7))) { // King moved off the board
+                    validMove = false; // Vot valid
+                } else if ((xMovement > 1) || (yMovement > 1)) { // If King moved greater than one square
+                    validMove = false; // Vot valid
+                  // Checks if the opponents King is beside the square the player has chosen to place his King  
                 } else if ((getPieceName((e.getX() + 75), e.getY()).contains("King"))
                         || (getPieceName((e.getX() - 75), e.getY()).contains("King"))
                         || (getPieceName((e.getX()), (e.getY() + 75)).contains("King"))
@@ -1592,10 +1594,10 @@ public class ChessProject extends JFrame implements MouseListener, MouseMotionLi
                         || (getPieceName((e.getX() + 75), (e.getY() - 75)).contains("King"))
                         || (getPieceName((e.getX() - 75), (e.getY() - 75)).contains("King"))) {
                     validMove = false;
-                } else if (piecePresent(e.getX(), e.getY())) {
-                    if (pieceName.contains("White")) {
-                        if (checkWhiteOponent(e.getX(), e.getY())) {
-                            validMove = true; 
+                } else if (piecePresent(e.getX(), e.getY())) { // If there is a piece present
+                    if (pieceName.contains("White")) { // And it contains a white piece
+                        if (checkWhiteOponent(e.getX(), e.getY())) { // Checks if its an opponents piece
+                            validMove = true; // Valid move
                         }
                     } else if (checkBlackOponent(e.getX(), e.getY())) {
                         validMove = true;
